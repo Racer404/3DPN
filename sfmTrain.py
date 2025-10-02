@@ -30,7 +30,6 @@ def train(
     frames = []
     perlin.loss = []
 
-
     for cam in cameras:
         for iter in range(iterations):
             dClose, dFar = cam.getDepthRange(perlin)
@@ -80,6 +79,6 @@ if __name__ == "__main__":
 
     cams = utils.readColmapSceneInfo(dataset)
     testCenter = torch.tensor([-0.461083, 1.5, 1.5],dtype=torch.float64, device="cuda")
-    perlin = PerlinNoise3D(scale=1, res=9, center=testCenter, device="cuda")
+    perlin = PerlinNoise3D(scale=1, res=15, center=testCenter, device="cuda")
 
     train(perlin, cams, 1000, 0.01, True, False)

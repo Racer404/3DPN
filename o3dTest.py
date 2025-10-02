@@ -25,8 +25,8 @@ def compute_intrinsic_matrix(fov_deg, width, height):
 
 
 def my_render_function(cam, extrinsic, perlinNoise):
-    cam.R = torch.tensor(extrinsic[:3,:3], device="cuda", dtype=torch.float64).T
-    cam.t = torch.tensor([extrinsic[:,3][0],extrinsic[:,3][1],-extrinsic[:,3][2]], device="cuda", dtype=torch.float64)
+    cam.R = torch.tensor(extrinsic[:3,:3], device="cuda", dtype=torch.float64)
+    cam.t = torch.tensor(extrinsic[:3,3], device="cuda", dtype=torch.float64)
 
     dClose, dFar = cam.getDepthRange(perlinNoise)
     samplePoints, validPoints = cam.sampleVolumeRandDepth(dClose, dFar)
@@ -35,7 +35,7 @@ def my_render_function(cam, extrinsic, perlinNoise):
 
     print(cam.t) #DEBUG
 
-    renderedPoints = perlinNoise.getValue(samplePoints, validPoints)
+    renderedPoints, out_mask = perlinNoise.getValue(samplePoints, validPoints)
 
     output = renderedPoints.reshape(389, 260, 1).squeeze()
 
@@ -89,7 +89,13 @@ class CustomCameraViewer:
     def update_loop(self):
         # Get extrinsic (4x4 world-to-camera)
         extrinsic = np.array(self.scene_widget.scene.camera.get_view_matrix(), dtype=np.float64)
-        # extrinsic = np.linalg.inv(view)
+        ToGLCamera = np.array([
+            [1, 0, 0, 0],
+            [0, -1, 0, 0],
+            [0, 0, -1, 0],
+            [0, 0, 0, 1]
+        ])
+        extrinsic =  ToGLCamera @ extrinsic
 
         # Call your custom rendering function
         img = my_render_function(self.cam, extrinsic, perlin)
@@ -109,7 +115,7 @@ class CustomCameraViewer:
 if __name__ == "__main__":
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
-    perlin = PerlinNoise3D(scale=2, res=2, device="cuda", center=torch.tensor([0,0,0], dtype=torch.float64))
+    perlin = PerlinNoise3D(scale=1, res=2, device="cuda", center=torch.tensor([0,0,0], dtype=torch.float64))
 
     cam = cams[0]
     viewer = CustomCameraViewer(cam, perlin)
