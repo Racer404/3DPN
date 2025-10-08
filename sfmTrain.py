@@ -1,13 +1,9 @@
 import os
 
 import cv2
-import numpy
 import torch
 from PIL import Image
-from matplotlib import pyplot as plt
-from open3d.cpu.pybind.core import float64
 from torch import optim
-from torch.cuda import device
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
@@ -33,7 +29,7 @@ def train(
     for cam in cameras:
         for iter in range(iterations):
             dClose, dFar = cam.getDepthRange(perlin)
-            samplePoints, validPoints = cam.sampleVolumeRandDepth(dClose, dFar)
+            samplePoints, validPoints = cam.sampleRayRandDepth(dClose, dFar)
             renderedPoints, output_mask = perlin.getValue(samplePoints, validPoints)
 
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device="cuda")/255.).T
@@ -48,7 +44,7 @@ def train(
 
             if ifVisualize:
                 renderedPoints[~output_mask] = 0.5 #Background
-                output_img = renderedPoints.reshape(389, 260, 1).squeeze()
+                output_img = renderedPoints.reshape(cam.width, cam.height)
                 torch.cuda.synchronize()
                 showImg = output_img.T.cpu().detach().numpy()
                 showGt = gtImage.T.cpu().detach().numpy()
