@@ -29,15 +29,18 @@ def my_render_function(cam, extrinsic, perlinNoise):
     cam.t = torch.tensor(extrinsic[:3,3], device="cuda", dtype=torch.float64)
 
     dClose, dFar = cam.getDepthRange(perlinNoise)
-    samplePoints, validPoints = cam.sampleRayRandDepth(dClose, dFar)
+    samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
+    renderedPoints_Volume, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
+    renderedPoints_Volume[~output_mask_Volume] = 0.5
 
-    # samplePoints, validPoints = cam.sampleVolumeFixDepth(0.5)
+    renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
+    renderedPoints = renderedPoints_Flat @ dAlpha
 
-    print(cam.t) #DEBUG
+    output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
+    output_mask = torch.any(output_mask_Flat, dim=1)
 
-    renderedPoints, out_mask = perlinNoise.getValue(samplePoints, validPoints)
+    # renderedPoints[~output_mask] = 0.5  # Background
     output = renderedPoints.reshape(cam.width, cam.height)
-
     image = output.T.cpu().detach().numpy()
 
     colormap = plt.get_cmap('viridis')
@@ -145,9 +148,11 @@ if __name__ == "__main__":
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
     points = utils.readColmapPoints(dataset)
+    cam = cams[0]
+    dSteps = 100  # Ray sampling frequency
+    dAlpha = utils.smoothStepsFunc(dSteps).to(device=cam.device)
 
     perlin = PerlinNoise3D(scale=1, res=2, device="cuda", center=torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64))
 
-    cam = cams[0]
     viewer = CustomCameraViewer(cam, perlin, points)
     viewer.run()

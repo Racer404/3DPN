@@ -34,7 +34,9 @@ def readColmapSceneInfo(path):
     return cameras
 
 
-def smoothStepsFunc(steps_n):
+def smoothStepsFunc(steps):
+    steps_n = torch.arange(steps, dtype=torch.float64) / steps
+    steps_n = torch.cat([steps_n[1:], torch.tensor([1])])
     func = -(steps_n ** 2) + 2 * steps_n  # Looking for a function from [0,1] -> [0,1]
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
     return alpha
@@ -80,11 +82,10 @@ class Camera:
         samplePoints = coords_inCamera_Flat_Homo.unsqueeze(-1) @ steps_depth.unsqueeze(-1).T
         samplePoints = samplePoints.transpose(1,2) # [N, steps, 3]
         samplePoints_Flat = samplePoints.reshape([-1,3]) # [N*steps, 3]
-        breakpoint()
+
         validIdx = samplePoints_Flat[:, 2] > 0
         samplePoints_World_Flat = (self.R.T @ (samplePoints_Flat - self.t).T).T
 
-        breakpoint()
         return samplePoints_World_Flat, validIdx
 
     def sampleRayRandDepth(self, dClose:float, dFar:float):

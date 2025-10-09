@@ -8,7 +8,6 @@ from torch import optim
 import utils
 from learnablePerlin3D import PerlinNoise3D
 
-
 def train(
         perlin: PerlinNoise3D = None,
         cameras: [utils.Camera] = None,
@@ -25,16 +24,26 @@ def train(
     output_img = None
     frames = []
     perlin.loss = []
+    dSteps = 100
+    dAlpha = utils.smoothStepsFunc(dSteps).to(device=cams[0].device)
 
-    for cam in cameras:
-        for iter in range(iterations):
+
+
+    for iter in range(iterations):
+        for cam in cameras:
             dClose, dFar = cam.getDepthRange(perlin)
-            samplePoints, validPoints = cam.sampleRayRandDepth(dClose, dFar)
-            renderedPoints, output_mask = perlin.getValue(samplePoints, validPoints)
+            samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
+            renderedPoints_Volume, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
+            renderedPoints_Volume[~output_mask_Volume] = 0.5
+
+            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
+            renderedPoints = renderedPoints_Flat @ dAlpha
+
+            output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
+            output_mask = torch.any(output_mask_Flat, dim=1)
 
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device="cuda")/255.).T
             gtImage_Flat = gtImage.flatten()
-
             loss = mse_loss(renderedPoints[output_mask], gtImage_Flat[output_mask])
             optimizer.zero_grad()
             loss.backward()
@@ -43,7 +52,7 @@ def train(
             perlin.loss.append(loss.item())
 
             if ifVisualize:
-                renderedPoints[~output_mask] = 0.5 #Background
+                # renderedPoints[~output_mask] = 0.5 #Background
                 output_img = renderedPoints.reshape(cam.width, cam.height)
                 torch.cuda.synchronize()
                 showImg = output_img.T.cpu().detach().numpy()

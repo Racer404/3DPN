@@ -1,9 +1,4 @@
 import torch
-from torch import optim
-import cv2
-from PIL import Image
-import numpy
-import os
 
 def indexCornerByTile(n: int, cnVectors: torch.Tensor) -> torch.Tensor:
     grid_size = n + 1  # number of corners along each axis

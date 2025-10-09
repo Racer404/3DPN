@@ -1,14 +1,8 @@
-import os
-
-import cv2
 import matplotlib.pyplot as plt
 import torch
-from PIL import Image
-from torch import optim
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
-from matplotlib import pyplot as plot
 
 dataset = "kitchen"
 cam = utils.readColmapSceneInfo(dataset)[0]
@@ -17,11 +11,17 @@ perlin = PerlinNoise3D(scale=1, res=15, center=testCenter, device="cuda")
 
 dClose, dFar = cam.getDepthRange(perlin)
 # samplePoints, validPoints = cam.sampleVolumeRandDepth(dClose, dFar)
-samplePoints, validPoints = cam.sampleVolumeBySteps(dClose, dFar, 10)
-renderedPoints, output_mask = perlin.getValue(samplePoints, validPoints)
+dSteps = 100 #Ray sampling frequency
+samplePoints_Flat, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
+renderedPoints_Flat, output_mask = perlin.getValue(samplePoints_Flat, validPoints)
 
-renderedPoints[~output_mask] = 0.5 #Background
-output_img = renderedPoints.reshape(389, 260, 1).squeeze()
+renderedPoints_Flat[~output_mask] = 0.5 #Background
+
+renderedPoints_V = renderedPoints_Flat.reshape(cam.width * cam.height, dSteps)
+dAlpha = utils.smoothStepsFunc(dSteps).to(device=cam.device)
+renderedPoints = renderedPoints_V@dAlpha
+
+output_img = renderedPoints.reshape(cam.width, cam.height)
 torch.cuda.synchronize()
 showImg = output_img.T.cpu().detach().numpy()
 
