@@ -99,6 +99,8 @@ class PerlinNoise3D:
         value = trilinearInt(smthSteps, gradientVecs)
 
         returnValue = torch.zeros(requestedPoints.shape[0],dtype=torch.float64, device=self.device)
-        returnValue[valid_mask] = value
-        # breakpoint()
-        return returnValue, valid_mask
+        returnValue[valid_mask] = value/2. + 0.5
+        returnValue[~valid_mask] = 0.
+
+        returnValue_Norm = returnValue #value -> [0,1], empty value = 0.5
+        return returnValue_Norm, valid_mask

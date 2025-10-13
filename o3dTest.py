@@ -31,15 +31,10 @@ def my_render_function(cam, extrinsic, perlinNoise):
     dClose, dFar = cam.getDepthRange(perlinNoise)
     samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
     renderedPoints_Volume, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
-    renderedPoints_Volume[~output_mask_Volume] = 0.5
 
     renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
     renderedPoints = renderedPoints_Flat @ dAlpha
 
-    output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
-    output_mask = torch.any(output_mask_Flat, dim=1)
-
-    # renderedPoints[~output_mask] = 0.5  # Background
     output = renderedPoints.reshape(cam.width, cam.height)
     image = output.T.cpu().detach().numpy()
 
@@ -152,7 +147,7 @@ if __name__ == "__main__":
     dSteps = 100  # Ray sampling frequency
     dAlpha = utils.smoothStepsFunc(dSteps).to(device=cam.device)
 
-    perlin = PerlinNoise3D(scale=1, res=2, device="cuda", center=torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64))
+    perlin = PerlinNoise3D(scale=1, res=3, device="cuda", center=torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64))
 
     viewer = CustomCameraViewer(cam, perlin, points)
     viewer.run()
