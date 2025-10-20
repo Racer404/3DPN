@@ -197,13 +197,17 @@ def train(
     return output_img
 
 if __name__ == "__main__":
+    start = time.time()
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
     points = utils.readColmapPoints(dataset)
     testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
     perlin = PerlinNoise3D(scale=2, res=30, center=testCenter, device="cuda")
 
-    train(perlin, cams, 100, 0.01, True, False)
+    train(perlin, cams, 10, 0.01, True, False)
+    torch.cuda.synchronize()
+    t1 = time.time() - start
+    print(f"index_select time: {t1:.4f}s, ")
 
     viewerCam = cams[0]
     viewer = PerlinViewer(viewerCam,perlin,points)
