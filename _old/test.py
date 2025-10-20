@@ -1,64 +1,62 @@
-import open3d.visualization.gui as gui
-import utils
 import torch
 import cv2
-from learnablePerlin3D import PerlinNoise3D
 from matplotlib import pyplot as plt
 
+mountain_file = cv2.imread("../mountain.png", cv2.IMREAD_GRAYSCALE)
+mountain = torch.tensor(mountain_file,device="cuda",dtype=torch.float64)/255.
+lenna_file = cv2.imread("../Lenna.jpg", cv2.IMREAD_GRAYSCALE)
+lenna = torch.tensor(lenna_file,device="cuda",dtype=torch.float64)/255.
+blocks_file = cv2.imread("../blocks.jpg", cv2.IMREAD_GRAYSCALE)
+blocks = torch.tensor(blocks_file,device="cuda",dtype=torch.float64)/255.
 
-def testCorner(canvas, corners, cam:utils.Camera):
-    coords_inCamera = (cam.R @ corners.T).T + cam.t  # (N, 3)
-    coords_inImage = cam.intrinsic @ coords_inCamera.T  # (3, N)
-    z = coords_inImage[-1]  # (N,)
-    mark = (coords_inImage / z)[:2].round().long()  # (2, N)
+randImg = torch.rand([640,640])
 
-    x, y = mark[0], mark[1]
+testImg = mountain.cpu()
+plt.figure("input")
+plt.imshow(testImg)
 
-    # filter out invalid coordinates
-    mask = (x >= 0) & (x < cam.width) & (y >= 0) & (y < cam.height)
-    x, y = x[mask], y[mask]
+fft_x = torch.fft.rfft(testImg, dim = 1)
+magnitude_spectrum_x = torch.log(torch.abs(fft_x) + 1e-9)
+plt.figure("magnitude_spectrum_x")
+plt.imshow(magnitude_spectrum_x)
+N_x = testImg.shape[1]
 
-    for idx in enumerate(x):
-        cv2.circle(canvas, (x.cpu().numpy()[idx[0]], y.cpu().numpy()[idx[0]]), 3, (0, 0, 255), -1)
+fft_x_mean = magnitude_spectrum_x.mean(dim = 0)
+plt.figure("avg_fft_x")
+plt.plot(fft_x_mean[1:])
+sorted_indices_x = torch.argsort(fft_x_mean, descending=True)
+print("TOP 10 x freq:")
+for i in range(10):
+    idx = sorted_indices_x[i].item()
+    if (idx == 0):
+        print("average intensity: " + str(fft_x_mean[idx].item()))
+    else:
+        print(N_x/idx)
+
+fft_y = torch.fft.rfft(testImg.cpu(), dim = 0)
+magnitude_spectrum_y = torch.log(torch.abs(fft_y) + 1e-9)
+plt.figure("magnitude_spectrum_y")
+plt.imshow(magnitude_spectrum_y)
+N_y = testImg.shape[0]
+
+fft_y_mean = magnitude_spectrum_y.mean(dim = 1)
+plt.figure("avg_fft_y")
+plt.plot(fft_y_mean[1:])
+sorted_indices_y = torch.argsort(fft_y_mean, descending=True)
+print("TOP 10 y freq:")
+for i in range(10):
+    idx = sorted_indices_y[i].item()
+    if(idx == 0):
+        print("average intensity: "+str(fft_y_mean[idx].item()))
+    else:
+        print(N_y/idx)
 
 
+#
+# fft_xy = torch.fft.fft(fft_x, dim = 0)
+# plt.figure("magnitude_spectrum_xy")
+# magnitude_spectrum_xy = torch.log(torch.abs(fft_xy) + 1e-9)
+# plt.imshow(magnitude_spectrum_xy)
 
-if __name__ == "__main__":
-    dataset = "kitchen"
-    points = utils.readColmapPoints(dataset)
-    cams = utils.readColmapSceneInfo(dataset)
-
-    perlin = PerlinNoise3D(scale=1, res=3, device="cuda")
-
-    cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device="cuda")
-    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda")
-    testCenter = torch.tensor([-0.461083, 1.5, 1.5],dtype=torch.float64, device="cuda")
-
-    drawCorner = (cornerCoords - toPerlinCenter) + testCenter
-
-
-
-    for cam in cams:
-        # make sure height, width order is correct
-        image = torch.zeros([cam.height, cam.width, 3], dtype=torch.uint8, device="cuda")
-
-        coords_inCamera = (cam.R @ points.xyzs.T).T + cam.t  # (N, 3)
-        coords_inImage = cam.intrinsic @ coords_inCamera.T  # (3, N)
-        z = coords_inImage[-1]  # (N,)
-        mark = (coords_inImage / z)[:2].round().long()  # (2, N)
-
-        x, y = mark[0], mark[1]
-
-        # filter out invalid coordinates
-        mask = (x >= 0) & (x < cam.width) & (y >= 0) & (y < cam.height)
-        x, y = x[mask], y[mask]
-
-        colors = points.rgbs[mask].to(torch.uint8).to(image.device)
-        # paint
-        image[y, x] = colors
-
-        out = image.cpu().detach().numpy()
-        testCorner(out,drawCorner,cam)
-
-        plt.imshow(out)
-        plt.show()
+plt.show()
+breakpoint()

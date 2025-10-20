@@ -201,7 +201,7 @@ if __name__ == "__main__":
     cams = utils.readColmapSceneInfo(dataset)
     points = utils.readColmapPoints(dataset)
     testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
-    perlin = PerlinNoise3D(scale=1, res=15, center=testCenter, device="cuda")
+    perlin = PerlinNoise3D(scale=2, res=30, center=testCenter, device="cuda")
 
     train(perlin, cams, 100, 0.01, True, False)
 

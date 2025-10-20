@@ -2,7 +2,6 @@ import torch
 from torch import optim
 import cv2
 from PIL import Image
-import numpy
 import os
 
 def get_corner_group(n: int, cnVectors: torch.Tensor) -> torch.Tensor:
@@ -40,16 +39,16 @@ class PerlinNoise2D:
         self.res = res
         self.device = device
         self.tileNumber = int(res/tileSize)
-        self.cornerVecs = (torch.rand([(self.tileNumber+1)**2,2], dtype=torch.float32)-0.5)*2.
-        # self.cornerVecs = (torch.ones([(self.tileNumber+1)**2,2], dtype=torch.float32)) #DEBUG ONLY
-        self.offsetMap = ((torch.stack(torch.meshgrid([torch.arange(0,tileSize),torch.arange(0,tileSize)],indexing='ij'),dim=-1).to(torch.float32)+0.5)/tileSize).tile((4,1,1,1))
-        offsets = torch.tensor([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=torch.float32)
+        self.cornerVecs = (torch.rand([(self.tileNumber+1)**2,2], dtype=torch.float64)-0.5)*2.
+        # self.cornerVecs = (torch.ones([(self.tileNumber+1)**2,2], dtype=torch.float64)) #DEBUG ONLY
+        self.offsetMap = ((torch.stack(torch.meshgrid([torch.arange(0,tileSize),torch.arange(0,tileSize)],indexing='ij'),dim=-1).to(torch.float64)+0.5)/tileSize).tile((4,1,1,1))
+        offsets = torch.tensor([[0, 0], [1, 0], [0, 1], [1, 1]], dtype=torch.float64)
         offsets = offsets[:, None, None, :]  # reshape to (4, 1, 1, 2)
         self.offsetMap -= offsets
         self.offsetMap = self.offsetMap.transpose(1,2)
         self.offsetMap = self.offsetMap.reshape(4,tileSize**2,2).transpose(1,2)
 
-        step = torch.arange(0,self.tileSize,dtype=torch.float32)/self.tileSize
+        step = torch.arange(0,self.tileSize,dtype=torch.float64)/self.tileSize
         self.lerpMatrix = (torch.tile(lerpFunction(step),[self.tileNumber]))
         self.lerpMatrix = self.lerpMatrix.to(device=device)
         self.cornerVecs = self.cornerVecs.to(device=device)
@@ -63,7 +62,8 @@ class PerlinNoise2D:
         self.interpolated_UP = self.gradientMap[0] * (1.-self.lerpMatrix) + self.gradientMap[1] * self.lerpMatrix
         self.interpolated_BL = self.gradientMap[2] * (1.-self.lerpMatrix) + self.gradientMap[3] * self.lerpMatrix
         self.interpolated_F = self.interpolated_UP.t() * (1.-self.lerpMatrix) + self.interpolated_BL.t() * self.lerpMatrix
-        return self.interpolated_F
+
+        return self.interpolated_F / 2. + 0.5
 
     def train(self,
         iterations: int = None,
@@ -89,7 +89,7 @@ class PerlinNoise2D:
             self.loss.append(loss.item())
             if ifVisualize:
                 torch.cuda.synchronize()
-                showImg = cv2.normalize(rendered.cpu().detach().numpy(),None,0,255,norm_type=cv2.NORM_MINMAX).astype(numpy.uint8)
+                showImg = rendered.cpu().detach().numpy()
                 cv2.imshow("Training in process", showImg)
                 frames.append(showImg)
                 cv2.waitKey(1)

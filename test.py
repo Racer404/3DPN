@@ -1,35 +1,27 @@
+import random
+
 import torch
-import utils
-import cv2
-from learnablePerlin3D import PerlinNoise3D
-from matplotlib import pyplot as plt
+import time
+
+# setup
+N = 10_000_000
+M_min = 8_000_000
+M_max = 9_000_000
+
+tensor_size_gb = 8  # Target 8GB, adjust based on your GPU's VRAM
+num_elements = int(tensor_size_gb * (1024**3) / 4) # For float32
 
 
-dataset = "kitchen"
-cams = utils.readColmapSceneInfo(dataset)
-cam = cams[0]
-perlin = PerlinNoise3D(scale=1, res=20, device="cuda", center=torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64))
+for i in range(1000):
+    i=i+1
+    A = torch.zeros(N, dtype=torch.float64)
+    M = random.randint(M_min, M_max)
+    B = torch.rand(M, dtype=torch.float64)
+    indices = torch.randperm(N)[:M]  # random unique indices for B placement
+    mask = torch.zeros(N, dtype=torch.bool)
+    mask[indices] = True
 
-dSteps = 100  # Ray sampling frequency
-dAlpha = utils.smoothStepsFunc(dSteps).to(device=cam.device)
-
-dClose, dFar = cam.getDepthRange(perlin)
-samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
-renderedPoints_Volume, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
-renderedPoints_Volume[~output_mask_Volume] = 0.5 # Background
-renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
-renderedPoints = renderedPoints_Flat @ dAlpha
-
-output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
-
-output_mask = torch.any(output_mask_Flat, dim=1)
-# renderedPoints[~output_mask] = 0.5  # Background
-
-output = renderedPoints.reshape(cam.width, cam.height)
-image = output.T.cpu().detach().numpy()
-
-gt = cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE)/255.
-
-plt.imshow(image)
-plt.imshow(gt)
-plt.show()
+    start = time.time()
+    A[mask] = B
+    torch.cuda.synchronize() if torch.cuda.is_available() else None
+    print(f"Boolean mask indexing: {time.time() - start:.4f} s")

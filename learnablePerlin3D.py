@@ -1,3 +1,5 @@
+import time
+
 import torch
 
 def indexCornerByTile(n: int, cnVectors: torch.Tensor) -> torch.Tensor:
@@ -91,8 +93,19 @@ class PerlinNoise3D:
 
         requestedTile = torch.floor(validPoints/self.tileSize)
         requestedTile_idx = (requestedTile[:,2]*(self.tileNumber**2)+requestedTile[:,1]*self.tileNumber+requestedTile[:,0]).to(torch.int)
-        requestedCorner = torch.index_select(self.corner_Flat,1, requestedTile_idx)
-        gradientVecs = torch.sum(offsetVecs*requestedCorner, dim=-1) #Vectorlized Dot product
+
+        chunk = 500_000   #Chunk to control the GPU usage per batch
+        gradient_out = []
+        requestedTile_idx = requestedTile_idx.long()  # <-- fix
+        for i in range(0, requestedTile_idx.numel(), chunk):
+            idx = requestedTile_idx[i:i + chunk]
+            idx_expand = idx.view(1, -1, 1).expand(8, -1, 3)
+            corner_chunk = torch.take_along_dim(self.corner_Flat, idx_expand, dim=1)
+            off_chunk = offsetVecs[:, i:i + chunk, :]
+            grad_chunk = torch.sum(off_chunk * corner_chunk, dim=-1)
+            gradient_out.append(grad_chunk)
+
+        gradientVecs = torch.cat(gradient_out, dim=1)
 
         smthSteps = lerpFunction(coord_inGrid)
 
@@ -100,7 +113,7 @@ class PerlinNoise3D:
 
         returnValue = torch.zeros(requestedPoints.shape[0],dtype=torch.float64, device=self.device)
         returnValue[valid_mask] = value/2. + 0.5
-        returnValue[~valid_mask] = 0.
+        returnValue[~valid_mask] = 0.5
 
         returnValue_Norm = returnValue #value -> [0,1], empty value = 0.5
         return returnValue_Norm, valid_mask
