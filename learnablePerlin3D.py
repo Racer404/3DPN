@@ -1,5 +1,3 @@
-import time
-
 import torch
 
 def indexCornerByTile(n: int, cnVectors: torch.Tensor) -> torch.Tensor:
@@ -57,6 +55,20 @@ def gradientProduct2Img(gradientTensor,tileNumber,tileSize,resolution):
     outputGradient = outputGradient.reshape(4, resolution, resolution)
     return outputGradient
 
+def readTensor(path):
+    data = torch.load(path,weights_only=True)
+
+    scale = data['scale']
+    res = data['res']
+    center = data['center']
+    device = data['device']
+    cornerVecs = data['cornerVecs']
+
+    perlin = PerlinNoise3D(scale, res, center, device)
+    perlin.cornerVecs = cornerVecs
+
+    return perlin
+
 class PerlinNoise3D:
     def __init__(self,
                  scale:float = None,
@@ -72,9 +84,13 @@ class PerlinNoise3D:
         self.device = device
         self.tileSize = scale/float(res)
         self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3], dtype=torch.float64, device=device)-0.5)*2.
-        self.cornerVecs.requires_grad = True
+        self.cornerVecs.requires_grad = False
         self.offsets = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=device)
         self.corner_Flat = None
+
+    def writeTensor(self, path):
+        writingPath = path
+        torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
 
     def getValue(self, requestedPoints, inputMask):
         self.corner_Flat = indexCornerByTile(self.tileNumber, self.cornerVecs)

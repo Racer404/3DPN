@@ -1,18 +1,15 @@
 import os
-import time
+from typing import List, Any
 
 import cv2
 import numpy as np
-import open3d as o3d
-import open3d.visualization.gui as gui
-import open3d.visualization.rendering as rendering
 import torch
 from PIL import Image
-from matplotlib import pyplot as plt
 from torch import optim
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
+from matplotlib import pyplot as plt
 
 
 def compute_intrinsic_matrix(fov_deg, width, height):
@@ -26,123 +23,21 @@ def compute_intrinsic_matrix(fov_deg, width, height):
         [0,   0,  1]
     ], dtype=np.float64)
 
-class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlin:PerlinNoise3D, Points:utils.Point3D):
-        self.cam = Cam
-        self.perlin = Perlin
-        self.points = Points
-        self.dSteps = 100
-        self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
-
-        self.app = gui.Application.instance
-        self.app.initialize()
-        self.window = self.app.create_window("Custom Camera Renderer", self.cam.width * 3, self.cam.height)
-
-        self.scene_box = gui.SceneWidget()
-        self.scene_perlin = gui.ImageWidget()
-        self.scene_pointcloud = gui.ImageWidget()
-        self.window.add_child(self.scene_box)
-        self.window.add_child(self.scene_perlin)
-        self.window.add_child(self.scene_pointcloud)
-
-        self.scene_box.scene = rendering.Open3DScene(self.window.renderer)
-        # Set up camera based on geometry
-        box = o3d.geometry.TriangleMesh.create_box(width=self.perlin.scale, height=self.perlin.scale, depth=self.perlin.scale)
-        box.translate(-box.get_center())
-        box.translate(self.perlin.center.cpu())
-        box.compute_vertex_normals()
-        self.scene_box.scene.add_geometry("box", box, rendering.MaterialRecord())
-        bbox = box.get_axis_aligned_bounding_box()
-        self.scene_box.setup_camera(50., bbox, bbox.get_center())
-
-        # Layout: side-by-side
-        def on_layout(ctx):
-            r = self.window.content_rect
-            half = r.width // 3
-            self.scene_box.frame = gui.Rect(r.x, r.y, half, r.height)
-            self.scene_perlin.frame = gui.Rect(r.x + half, r.y, half, r.height)
-            self.scene_pointcloud.frame = gui.Rect(r.x + 2 * half, r.y, half, r.height)
-        self.window.set_on_layout(on_layout)
-
-    def render_perlin(self):
-        dClose, dFar = self.cam.getDepthRange(self.perlin)
-        samplePoints_Volume, validPoints = self.cam.sampleVolumeBySteps(dClose, dFar, self.dSteps)
-        renderedPoints_Volume, output_mask_Volume = self.perlin.getValue(samplePoints_Volume, validPoints)
-
-        renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
-        renderedPoints = renderedPoints_Flat @ self.dAlpha
-
-        output = renderedPoints.reshape(self.cam.width, self.cam.height)
-        image = output.T.cpu().detach().numpy()
-
-        colormap = plt.get_cmap('viridis')
-        colored_image = colormap(image)
-
-        return (colored_image * 255).astype(np.uint8)
-
-    def render_pointCloud(self):
-        image = torch.zeros([self.cam.height, self.cam.width, 3], dtype=torch.uint8, device="cuda")
-        coords_inCamera = (self.cam.R @ self.points.xyzs.T).T + self.cam.t  # (N, 3)
-        coords_inImage = self.cam.intrinsic @ coords_inCamera.T  # (3, N)
-        z = coords_inImage[-1]  # (N,)
-        mark = (coords_inImage / z)[:2].round().long()  # (2, N)
-        x, y = mark[0], mark[1]
-        # filter out invalid coordinates
-        mask = (x >= 0) & (x < self.cam.width) & (y >= 0) & (y < self.cam.height)
-        x, y = x[mask], y[mask]
-        colors = self.points.rgbs[mask].to(torch.uint8).to(image.device)
-        # paint
-        image[y, x] = colors
-
-        return image.cpu().detach().numpy()
-
-    def start_loop(self):
-        # Kick off the recurring loop once GUI starts
-        self.app.post_to_main_thread(self.window, self.on_loop)
-
-    def on_loop(self):
-        # Get camera transform
-        extrinsic = np.array(self.scene_box.scene.camera.get_view_matrix(), dtype=np.float64)
-        ToGLCamera = np.array([
-            [1, 0, 0, 0],
-            [0, -1, 0, 0],
-            [0, 0, -1, 0],
-            [0, 0, 0, 1]
-        ])
-        extrinsic = ToGLCamera @ extrinsic
-        self.cam.R = torch.tensor(extrinsic[:3, :3], device="cuda", dtype=torch.float64)
-        self.cam.t = torch.tensor(extrinsic[:3, 3], device="cuda", dtype=torch.float64)
-
-        # Render both images
-        img_perlin = self.render_perlin()
-        o3d_img_perlin = o3d.t.geometry.Image(img_perlin)
-
-        img_pointCloud = self.render_pointCloud()
-        o3d_img_pointCloud = o3d.t.geometry.Image(img_pointCloud)
-
-        # Safe, direct update (no thread issues)
-        self.scene_perlin.update_image(o3d_img_perlin)
-        self.scene_pointcloud.update_image(o3d_img_pointCloud)
-
-        # Schedule next frame (~30 FPS)
-        time.sleep(1 / 30.0)
-        self.app.post_to_main_thread(self.window, self.on_loop)
-
-
 def train(
         perlin: PerlinNoise3D = None,
         cameras: [utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
         ifVisualize: bool = False,
-        ifSaveResult: bool = False) -> torch.Tensor:
+        ifSaveResult: bool = False,
+        resultTensorPth: str = "./trained_default.pth") -> List[Any]:
+    perlin.cornerVecs.requires_grad = True
     optimizer = optim.Adam(
         [perlin.cornerVecs], lr
     )
     mse_loss = torch.nn.MSELoss()
     mae_loss = torch.nn.L1Loss()
 
-    output_img = None
     frames = []
     perlin.loss = []
     dSteps = 100
@@ -178,8 +73,10 @@ def train(
                 showGt = gtImage.T.cpu().detach().numpy()
                 cv2.imshow("Training", showImg)
                 cv2.imshow("GT", showGt)
-                frames.append(showImg)
                 cv2.waitKey(1)
+
+                if ifSaveResult:
+                    frames.append(showImg)
 
     if ifSaveResult:
         frames = [Image.fromarray(frame) for frame in frames]
@@ -190,26 +87,22 @@ def train(
             save_all=True,
             append_images=frames[1:],
             optimize=False,
-            duration=5,
+            duration=1,
             loop=0,
         )
 
-    return output_img
+    perlin.cornerVecs.requires_grad = False
+    perlin.writeTensor(resultTensorPth)
+    return perlin.loss
 
 if __name__ == "__main__":
-    start = time.time()
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
-    points = utils.readColmapPoints(dataset)
     testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
+
     perlin = PerlinNoise3D(scale=2, res=30, center=testCenter, device="cuda")
 
-    train(perlin, cams, 10, 0.01, True, False)
+    loss = train(perlin, cams, 100, 0.01, False, False,"kitchen/trained.pth")
     torch.cuda.synchronize()
-    t1 = time.time() - start
-    print(f"index_select time: {t1:.4f}s, ")
-
-    viewerCam = cams[0]
-    viewer = PerlinViewer(viewerCam,perlin,points)
-    viewer.start_loop()
-    viewer.app.run()
+    plt.plot(loss)
+    plt.show()
