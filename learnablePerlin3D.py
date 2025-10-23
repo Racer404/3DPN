@@ -43,7 +43,7 @@ def trilinearInt(steps:torch.Tensor, corners:torch.Tensor):
     return G1234*(1.-steps[:,2])+G5678*steps[:,2]
 
 def lerpFunction(x):
-    newX = 6 * x**5 - 15 * x**4 + 10 * x**3
+    newX = 6 * x**5 - 15 * x**4 + 10 * x**3 #1-1 function
     # base = 6 * x**5 - 15 * x**4 + 10 * x**3
     # newX = base ** 2
     return newX

@@ -1,10 +1,13 @@
-from learnablePerlin3D import PerlinNoise3D
-import learnablePerlin3D
 import torch
 
-perlin_A = PerlinNoise3D(1,3, device="cuda")
-path = "kitchen/trained.pth"
-perlin_A.writeTensor(path)
+A = torch.rand(10)
+B = torch.rand(10)
+C = torch.rand(10)
 
-perlin_B = learnablePerlin3D.readTensor(path)
+total = []
+
+total.append(A)
+total.append(B)
+total.append(C)
+
 breakpoint()

@@ -10,9 +10,9 @@ from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlin:PerlinNoise3D, Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlins:[PerlinNoise3D], Points:utils.Point3D):
         self.cam = Cam
-        self.perlin = Perlin
+        self.perlins = Perlins
         self.points = Points
         self.dSteps = 100
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
@@ -30,9 +30,9 @@ class PerlinViewer:
 
         self.scene_box.scene = rendering.Open3DScene(self.window.renderer)
         # Set up camera based on geometry
-        box = o3d.geometry.TriangleMesh.create_box(width=self.perlin.scale, height=self.perlin.scale, depth=self.perlin.scale)
+        box = o3d.geometry.TriangleMesh.create_box(width=self.perlins[0].scale, height=self.perlins[0].scale, depth=self.perlins[0].scale)
         box.translate(-box.get_center())
-        box.translate(self.perlin.center.cpu())
+        box.translate(self.perlins[0].center.cpu())
         box.compute_vertex_normals()
         self.scene_box.scene.add_geometry("box", box, rendering.MaterialRecord())
         bbox = box.get_axis_aligned_bounding_box()
@@ -48,9 +48,15 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        dClose, dFar = self.cam.getDepthRange(self.perlin)
+        dClose, dFar = self.cam.getDepthRange(self.perlins[0])
         samplePoints_Volume, validPoints = self.cam.sampleVolumeBySteps(dClose, dFar, self.dSteps)
-        renderedPoints_Volume, output_mask_Volume = self.perlin.getValue(samplePoints_Volume, validPoints)
+
+        output_mask_Volume = None
+        renderedPoints_Volume = 0
+        for p in self.perlins:
+            renderedPoints_vol, output_mask_Volume = p.getValue(samplePoints_Volume, validPoints)
+            renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
+        renderedPoints_Volume = renderedPoints_Volume / len(self.perlins)
 
         renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
         renderedPoints = renderedPoints_Flat @ self.dAlpha
