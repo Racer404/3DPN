@@ -89,7 +89,7 @@ def train(
 
     for idx,p in enumerate(perlins):
         p.cornerVecs.requires_grad_(False)
-        # p.writeTensor(resultTensorPth+str(idx)+".pth")
+        p.writeTensor(resultTensorPth+str(idx)+".pth")
 
     return totalLoss
 

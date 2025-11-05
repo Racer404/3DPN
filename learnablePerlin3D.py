@@ -61,10 +61,11 @@ def readTensor(path):
     scale = data['scale']
     res = data['res']
     center = data['center']
+    channelNum = data['channelNum']
     device = data['device']
     cornerVecs = data['cornerVecs']
 
-    perlin = PerlinNoise3D(scale, res, center, device)
+    perlin = PerlinNoise3D(scale, res, center, channelNum, device)
     perlin.cornerVecs = cornerVecs
 
     return perlin
@@ -92,7 +93,7 @@ class PerlinNoise3D:
 
     def writeTensor(self, path):
         writingPath = path
-        torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
+        torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'channelNum':self.channelNum, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
 
     def getValue(self, requestedPoints, inputMask):
         self.corner_Flat = indexCornerByTile(self.tileNumber, self.cornerVecs)
