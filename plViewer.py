@@ -58,16 +58,15 @@ class PerlinViewer:
             renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
         renderedPoints_Volume = renderedPoints_Volume / len(self.perlins)
 
-        renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
-        renderedPoints = renderedPoints_Flat @ self.dAlpha
+        renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps, self.perlins[0].channelNum)
+        renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), self.dAlpha)
+        output = renderedPoints.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum)
+        image = output.transpose(0,1).contiguous().cpu().detach().numpy()
 
-        output = renderedPoints.reshape(self.cam.width, self.cam.height)
-        image = output.T.cpu().detach().numpy()
+        # colormap = plt.get_cmap('viridis')
+        # colored_image = colormap(image)
 
-        colormap = plt.get_cmap('viridis')
-        colored_image = colormap(image)
-
-        return (colored_image * 255).astype(np.uint8)
+        return (image * 255).astype(np.uint8)
 
     def render_pointCloud(self):
         image = torch.zeros([self.cam.height, self.cam.width, 3], dtype=torch.uint8, device="cuda")

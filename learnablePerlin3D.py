@@ -74,16 +74,18 @@ class PerlinNoise3D:
                  scale:float = None,
                  res:int = None,
                  center = torch.tensor([0.,0.,0.],dtype=torch.float64),
+                 channelNum = 1,
                  device:str = None
                  ):
         self.loss = None
 
         self.scale = scale
         self.center = center.to(device=device)
+        self.channelNum = channelNum
         self.tileNumber = res
         self.device = device
         self.tileSize = scale/float(res)
-        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3], dtype=torch.float64, device=device)-0.5)*2.
+        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3,self.channelNum], dtype=torch.float64, device=device)-0.5)*2.
         self.cornerVecs.requires_grad = False
         self.offsets = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=device)
         self.corner_Flat = None
@@ -115,19 +117,19 @@ class PerlinNoise3D:
         requestedTile_idx = requestedTile_idx.long()  # <-- fix
         for i in range(0, requestedTile_idx.numel(), chunk):
             idx = requestedTile_idx[i:i + chunk]
-            idx_expand = idx.view(1, -1, 1).expand(8, -1, 3)
+            idx_expand = idx.view(1, -1, 1, 1).expand(8, -1, 3, self.channelNum)
             corner_chunk = torch.take_along_dim(self.corner_Flat, idx_expand, dim=1)
-            off_chunk = offsetVecs[:, i:i + chunk, :]
-            grad_chunk = torch.sum(off_chunk * corner_chunk, dim=-1)
+            off_chunk = offsetVecs[:, i:i + chunk, :].unsqueeze(dim=-1)
+            grad_chunk = torch.sum(off_chunk * corner_chunk, dim=2)
             gradient_out.append(grad_chunk)
 
         gradientVecs = torch.cat(gradient_out, dim=1)
 
-        smthSteps = lerpFunction(coord_inGrid)
+        smthSteps = lerpFunction(coord_inGrid).unsqueeze(dim=-1)
 
         value = trilinearInt(smthSteps, gradientVecs)
 
-        returnValue = torch.zeros(requestedPoints.shape[0],dtype=torch.float64, device=self.device)
+        returnValue = torch.zeros([requestedPoints.shape[0],self.channelNum],dtype=torch.float64, device=self.device)
         returnValue[valid_mask] = value/2. + 0.5
         returnValue[~valid_mask] = 0.5
 
