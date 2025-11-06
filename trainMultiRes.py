@@ -48,7 +48,7 @@ def train(
             renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum)
             renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), dAlpha)
 
-            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_ANYCOLOR), dtype=torch.float64, device="cuda")/255.).transpose(0,1)
+            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device="cuda")/255.).transpose(0,1)
             gtImage_Flat = gtImage.reshape(-1, perlins[0].channelNum)
 
             output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
