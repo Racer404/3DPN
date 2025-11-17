@@ -86,7 +86,7 @@ class PerlinNoise3D:
         self.tileNumber = res
         self.device = device
         self.tileSize = scale/float(res)
-        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3,self.channelNum], dtype=torch.float64, device=device)-0.5)*2.
+        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3,self.channelNum], dtype=torch.float64, device=device)-0.5) * 2.
         self.cornerVecs.requires_grad = False
         self.offsets = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=device)
         self.corner_Flat = None
@@ -95,16 +95,11 @@ class PerlinNoise3D:
         writingPath = path
         torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'channelNum':self.channelNum, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
 
-    def getValue(self, requestedPoints, inputMask):
+    def getValue(self, requestedPoints):
         self.corner_Flat = indexCornerByTile(self.tileNumber, self.cornerVecs)
 
         toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device=self.device) * self.scale
-        requestedPoints = (requestedPoints - self.center) + toPerlinCenter
-
-        mask = (requestedPoints >= 0) & (requestedPoints < self.scale)
-        valid_mask = (mask.all(dim=1) & inputMask)
-
-        validPoints = requestedPoints[valid_mask]
+        validPoints = (requestedPoints - self.center) + toPerlinCenter
 
         coord_inGrid = (validPoints%self.tileSize)/self.tileSize
         offsetVecs = coord_inGrid[:,None] - self.offsets
@@ -130,9 +125,4 @@ class PerlinNoise3D:
 
         value = trilinearInt(smthSteps, gradientVecs)
 
-        returnValue = torch.zeros([requestedPoints.shape[0],self.channelNum],dtype=torch.float64, device=self.device)
-        returnValue[valid_mask] = value/2. + 0.5
-        returnValue[~valid_mask] = 0.5
-
-        returnValue_Norm = returnValue #value -> [0,1], empty value = 0.5
-        return returnValue_Norm, valid_mask
+        return value

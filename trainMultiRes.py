@@ -1,4 +1,5 @@
 import os
+import random
 from typing import List, Any
 
 import cv2
@@ -10,9 +11,18 @@ import utils
 from learnablePerlin3D import PerlinNoise3D
 from matplotlib import pyplot as plt
 
+def maskValidPoints(requestedPoints, p_center, p_scale):
+    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
+    requestedPoints = (requestedPoints - p_center) + toPerlinCenter
+
+    mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
+    valid_mask = mask.all(dim=1)
+
+    return valid_mask
+
 def train(
-        perlins: [PerlinNoise3D] = None,
-        cameras: [utils.Camera] = None,
+        perlins: List[PerlinNoise3D] = None,
+        cameras: List[utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
         ifVisualize: bool = False,
@@ -34,27 +44,31 @@ def train(
     dAlpha = utils.smoothStepsFunc(dSteps).to(device=cams[0].device)
 
     for iter in range(iterations):
+        random.shuffle(cams)
         for cam in cameras:
-            dClose, dFar = cam.getDepthRange(perlins[0])
-            samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
+            p_close, p_far = cam.getDepthRange(perlins[0].center, perlins[0].scale)
+            d_start = p_close if p_close > 0. else 0.00001
+            d_end = d_start + perlins[0].scale * 1.73205  # 1.73205 ~ sqrt(3)
 
-            output_mask_Volume = None
-            renderedPoints_Volume = 0
-            for p in perlins:
-                renderedPoints_vol, output_mask_Volume = p.getValue(samplePoints_Volume, validPoints)
-                renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
-            renderedPoints_Volume = renderedPoints_Volume / len(perlins)
+            requestPoints_Volume = cam.sampleVolumeBySteps(d_start, d_end, dSteps)[0]
+            mask_Volume = maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
+
+            rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
+            renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
+
+            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum], dtype=torch.float64, device="cuda")
+            renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+            renderedPoints_Volume[~mask_Volume] = 0.5
 
             renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum)
             renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), dAlpha)
+            pred_img = renderedPoints.reshape(cam.width, cam.height, perlins[0].channelNum)
+
+            mask_Flat = torch.any(mask_Volume.reshape(cam.width * cam.height, dSteps), dim=1)
+            mask_img = mask_Flat.reshape(cam.width, cam.height)
 
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device="cuda")/255.).transpose(0,1)
-            gtImage_Flat = gtImage.reshape(-1, perlins[0].channelNum)
-
-            output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
-            output_mask = torch.any(output_mask_Flat, dim=1)
-
-            loss = mse_loss(renderedPoints[output_mask], gtImage_Flat[output_mask])
+            loss = mse_loss(pred_img[mask_img], gtImage[mask_img])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -102,7 +116,7 @@ if __name__ == "__main__":
     p10 = PerlinNoise3D(scale=2, res=10, center=testCenter, channelNum=3, device="cuda")
     p30 = PerlinNoise3D(scale=2, res=30, center=testCenter, channelNum=3, device="cuda")
 
-    loss = train([p3,p10,p30], cams, 100, 0.01, True, False)
+    loss = train([p3,p10], cams, 100, 0.01, True, False)
     torch.cuda.synchronize()
     plt.plot(loss)
     plt.show()
