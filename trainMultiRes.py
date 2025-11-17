@@ -1,23 +1,62 @@
 import os
+import random
 from typing import List, Any
 
 import cv2
+import numpy
 import torch
 from PIL import Image
+from matplotlib import pyplot as plt
 from torch import optim
 
+import learnablePerlin3D
 import utils
 from learnablePerlin3D import PerlinNoise3D
-from matplotlib import pyplot as plt
+from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
+
+def maskValidPoints(requestedPoints, p_center, p_scale):
+    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
+    requestedPoints = (requestedPoints - p_center) + toPerlinCenter
+
+    mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
+    valid_mask = mask.all(dim=1)
+
+    return valid_mask
+
+def renderfromCamRay(cam: utils.Camera, perlins: List[PerlinNoise3D], rayDepth, rayDecay):
+    p_close, p_far = cam.getDepthRange(perlins[0].center, perlins[0].scale)
+    d_start = p_close if p_close > 0. else 0.00001
+    d_end = d_start + perlins[0].scale * 1.73205  # 1.73205 ~ sqrt(3)
+
+    requestPoints_Volume = cam.sampleVolumeBySteps(d_start, d_end, rayDepth)[0]
+    mask_Volume = maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
+
+    rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
+    renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
+
+    renderedPoints_Volume = torch.zeros(requestPoints_Volume.shape[0], dtype=torch.float64, device="cuda")
+    renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+    renderedPoints_Volume[~mask_Volume] = 0.5
+
+    renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, rayDepth)
+    renderedPoints = renderedPoints_Flat @ rayDecay
+
+    output_img = renderedPoints.reshape(cam.width, cam.height)
+    mask_Flat = torch.any(mask_Volume.reshape(cam.width * cam.height, rayDepth), dim=1)
+    mask_img = mask_Flat.reshape(cam.width, cam.height)
+
+    return output_img, mask_img
 
 def train(
-        perlins: [PerlinNoise3D] = None,
-        cameras: [utils.Camera] = None,
+        perlins: List[PerlinNoise3D] = None,
+        cameras: List[utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
         ifVisualize: bool = False,
-        ifSaveResult: bool = False,
-        resultTensorPth: str = "kitchen/trained/") -> List[Any]:
+        ifSaveGif: bool = False,
+        resultFolder: str = "results") -> List[Any]:
+
+    os.makedirs(resultFolder, exist_ok=True)
 
     for p in perlins:
         p.cornerVecs.requires_grad_(True)
@@ -27,35 +66,27 @@ def train(
 
     mse_loss = torch.nn.MSELoss()
     mae_loss = torch.nn.L1Loss()
+    bceLogit_loss = torch.nn.BCEWithLogitsLoss()
+    ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1., size_average=True, channel=1)
+    # loss_func = ssim_loss
 
     frames = []
     totalLoss = []
     dSteps = 100
     dAlpha = utils.smoothStepsFunc(dSteps).to(device=cams[0].device)
+    resultRefCam = cams[10]
 
     for iter in range(iterations):
+        random.shuffle(cams)
         for cam in cameras:
-            dClose, dFar = cam.getDepthRange(perlins[0])
-            samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
-
-            output_mask_Volume = None
-            renderedPoints_Volume = 0
-
-            for p in perlins:
-                renderedPoints_vol, output_mask_Volume = p.getValue(samplePoints_Volume, validPoints)
-                renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
-            renderedPoints_Volume = renderedPoints_Volume / len(perlins)
-
-            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
-            renderedPoints = renderedPoints_Flat @ dAlpha
-
+            pred_img, mask = renderfromCamRay(cam, perlins, dSteps, dAlpha)
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device="cuda")/255.).T
-            gtImage_Flat = gtImage.flatten()
 
-            output_mask_Flat = output_mask_Volume.reshape(cam.width * cam.height, dSteps)
-            output_mask = torch.any(output_mask_Flat, dim=1)
+            pred_img[~mask] = gtImage[~mask]
+            loss_a = 1 - ssim_loss(pred_img.unsqueeze(0).unsqueeze(0).permute(0,1,3,2), gtImage.unsqueeze(0).unsqueeze(0).permute(0,1,3,2))
+            loss_b = mse_loss(pred_img, gtImage)
+            loss = 0.1 * loss_a + 0.9 * loss_b
 
-            loss = mse_loss(renderedPoints[output_mask], gtImage_Flat[output_mask])
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -64,25 +95,24 @@ def train(
 
             if ifVisualize:
                 # renderedPoints[~output_mask] = ? #Background
-                output_img = renderedPoints.reshape(cam.width, cam.height)
                 torch.cuda.synchronize()
-                showImg = output_img.T.cpu().detach().numpy()
+                showImg = pred_img.T.cpu().detach().numpy()
                 showGt = gtImage.T.cpu().detach().numpy()
                 cv2.imshow("Training", showImg)
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
-                if ifSaveResult:
-                    frames.append(showImg)
+        if ifSaveGif:
+            pred_img, mask = renderfromCamRay(resultRefCam, perlins, dSteps, dAlpha)
+            torch.cuda.synchronize()
+            frames.append((pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8))
 
-    if ifSaveResult:
-        frames = [Image.fromarray(frame) for frame in frames]
-        out_dir = os.path.join(os.getcwd(), "results")
-        os.makedirs(out_dir, exist_ok=True)
-        frames[0].save(
-            f"{out_dir}/training.gif",
+    if ifSaveGif:
+        gif = [Image.fromarray(frame) for frame in frames]
+        gif[0].save(
+            f"{resultFolder}/training.gif",
             save_all=True,
-            append_images=frames[1:],
+            append_images=gif[1:],
             optimize=False,
             duration=1,
             loop=0,
@@ -90,20 +120,74 @@ def train(
 
     for idx,p in enumerate(perlins):
         p.cornerVecs.requires_grad_(False)
-        p.writeTensor(resultTensorPth+str(idx)+".pth")
+        p.writeTensor(f"{resultFolder}/{str(idx)}.pth")
 
     return totalLoss
 
 if __name__ == "__main__":
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
-    testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
+    p30 = learnablePerlin3D.readTensor("randomPerlin30.pth")
 
-    p30 = PerlinNoise3D(scale=2, res=30, center=testCenter, device="cuda")
-    p10 = PerlinNoise3D(scale=2, res=10, center=testCenter, device="cuda")
-    p3 = PerlinNoise3D(scale=2, res=3, center=testCenter, device="cuda")
+    trainingSetup = "ds_shuffle_ssim"
 
-    loss = train([p30,p10,p3], cams, 100, 0.01, False, False)
+    outputFolder = "LNPL Data analysis/" + trainingSetup
+    loss = train([p30], cams, 100, 0.01, True, True, outputFolder)
+
+    loss_arr = numpy.array(loss)
+    loss_arr = loss_arr.reshape([-1,len(cams)])
+    loss_per_batch = loss_arr.mean(axis=1)
     torch.cuda.synchronize()
-    plt.plot(loss)
-    plt.show()
+    ## END OF TRAINING
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # === Save histograms and plots ===
+    def save_plot(fig_name):
+        """Helper function to save current matplotlib figure."""
+        plt.savefig(os.path.join(outputFolder, fig_name))
+        plt.close()
+
+    plt.figure()
+    plt.plot(loss_per_batch)
+    plt.annotate(str(loss_per_batch[-1]), xy=(len(loss_per_batch) - 1, loss_per_batch[-1]))
+    save_plot("loss_batch.png")
+
+    # resultRefCam = utils.readColmapSceneInfo(dataset)[10]
+    # dAlpha = utils.smoothStepsFunc(100).to(device=resultRefCam.device)
+    #
+    # pred_img, mask = renderfromCamRay(resultRefCam, [p30], 100, dAlpha)
+    # torch.cuda.synchronize()
+    #
+    # gtImage = (torch.tensor(cv2.imread(resultRefCam.image, cv2.IMREAD_GRAYSCALE), dtype=torch.float64,
+    #                         device="cuda") / 255.).T
+    # gtImage_Flat = gtImage.flatten()
+    #
+    # showImg = (pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+    # showGt = (gtImage.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+    #
+    # cv2.imwrite(os.path.join(outputFolder, "trained.png"), showImg)
+    # cv2.imwrite(os.path.join(outputFolder, "gt.png"), showGt)

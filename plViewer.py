@@ -4,13 +4,14 @@ import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import torch
 from matplotlib import pyplot as plt
+from typing import List
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlins:[PerlinNoise3D], Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlins: List[PerlinNoise3D], Points:utils.Point3D):
         self.cam = Cam
         self.perlins = Perlins
         self.points = Points
@@ -48,7 +49,7 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        dClose, dFar = self.cam.getDepthRange(self.perlins[0])
+        dClose, dFar = self.cam.getDepthRange(self.perlins[0].center, self.perlins[0].scale)
         samplePoints_Volume, validPoints = self.cam.sampleVolumeBySteps(dClose, dFar, self.dSteps)
 
         output_mask_Volume = None

@@ -45,7 +45,7 @@ def train(
 
     for iter in range(iterations):
         for cam in cameras:
-            dClose, dFar = cam.getDepthRange(perlin)
+            dClose, dFar = cam.getDepthRange(perlin.center, perlin.scale)
             samplePoints_Volume, validPoints = cam.sampleVolumeBySteps(dClose, dFar, dSteps)
             renderedPoints_Volume, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
 

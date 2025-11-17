@@ -5,7 +5,6 @@ import torch
 from typing import List
 
 from colmap_loader import read_extrinsics_binary, read_intrinsics_binary, read_extrinsics_text, read_intrinsics_text, read_points3D_binary, read_points3D_text
-from learnablePerlin3D import PerlinNoise3D
 
 def readColmapSceneInfo(path):
     try:
@@ -41,6 +40,8 @@ def smoothStepsFunc(steps):
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
     return alpha
 
+def sigmoid_ix(x, i):
+    return 1 / (1 + torch.exp(-i * x))
 
 class Camera:
     def __init__(self, width, height, intrinsic, R, t, image):
@@ -59,11 +60,11 @@ class Camera:
         return mat4_4_Rt
 
 
-    def getDepthRange(self, perlin: PerlinNoise3D):
+    def getDepthRange(self, center, scale):
         cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=self.device)
         toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device=self.device)
 
-        cornerCoords = perlin.scale * (cornerCoords - toPerlinCenter) + perlin.center
+        cornerCoords = scale * (cornerCoords - toPerlinCenter) + center
         cornerCoords_Camera = (self.R @ cornerCoords.T).T + self.t
         cornerDepth_Camera =  cornerCoords_Camera[:,2]
 
