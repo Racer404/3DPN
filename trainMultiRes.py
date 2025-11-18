@@ -3,6 +3,7 @@ import random
 from typing import List, Any
 
 import cv2
+import numpy
 import torch
 from PIL import Image
 from torch import optim
@@ -26,8 +27,10 @@ def train(
         iterations: int = None,
         lr: float = None,
         ifVisualize: bool = False,
-        ifSaveResult: bool = False,
-        resultTensorPth: str = "kitchen/trained/") -> List[Any]:
+        ifSaveGif: bool = False,
+        resultFolder: str = "results") -> List[Any]:
+
+    os.makedirs(resultFolder, exist_ok=True)
 
     for p in perlins:
         p.cornerVecs.requires_grad_(True)
@@ -77,25 +80,24 @@ def train(
 
             if ifVisualize:
                 # renderedPoints[~output_mask] = ? #Background
-                output_img = renderedPoints.reshape(cam.width, cam.height, perlins[0].channelNum)
                 torch.cuda.synchronize()
-                showImg = output_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+                showImg = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
                 showGt = gtImage.transpose(0,1).cpu().detach().numpy()
                 cv2.imshow("Training", showImg)
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
-                if ifSaveResult:
+                if ifSaveGif:
                     frames.append(showImg)
 
-    if ifSaveResult:
-        frames = [Image.fromarray(frame) for frame in frames]
+    if ifSaveGif:
+        gif = [Image.fromarray(frame) for frame in frames]
         out_dir = os.path.join(os.getcwd(), "results")
         os.makedirs(out_dir, exist_ok=True)
-        frames[0].save(
-            f"{out_dir}/training.gif",
+        gif[0].save(
+            f"{resultFolder}/training.gif",
             save_all=True,
-            append_images=frames[1:],
+            append_images=gif[1:],
             optimize=False,
             duration=1,
             loop=0,
@@ -103,20 +105,36 @@ def train(
 
     for idx,p in enumerate(perlins):
         p.cornerVecs.requires_grad_(False)
-        p.writeTensor(resultTensorPth+str(idx)+".pth")
+        p.writeTensor(f"{resultFolder}/{str(idx)}.pth")
 
     return totalLoss
 
 if __name__ == "__main__":
     dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
+    trainingSetup = "ds_shuffle_mse"
+    outputFolder = "LNPL Data analysis/" + trainingSetup
+
     testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
 
     p3 = PerlinNoise3D(scale=2, res=3, center=testCenter, channelNum=3, device="cuda")
     p10 = PerlinNoise3D(scale=2, res=10, center=testCenter, channelNum=3, device="cuda")
     p30 = PerlinNoise3D(scale=2, res=30, center=testCenter, channelNum=3, device="cuda")
 
-    loss = train([p3,p10], cams, 100, 0.01, True, False)
+    loss = train([p3,p10,p30], cams, 100, 0.01, True, False, outputFolder)
+    loss_arr = numpy.array(loss)
+    loss_arr = loss_arr.reshape([-1,len(cams)])
+    loss_per_batch = loss_arr.mean(axis=1)
     torch.cuda.synchronize()
-    plt.plot(loss)
-    plt.show()
+    ## END OF TRAINING
+
+    # === Save histograms and plots ===
+    def save_plot(fig_name):
+        """Helper function to save current matplotlib figure."""
+        plt.savefig(os.path.join(outputFolder, fig_name))
+        plt.close()
+
+    plt.figure()
+    plt.plot(loss_per_batch)
+    plt.annotate(str(loss_per_batch[-1]), xy=(len(loss_per_batch) - 1, loss_per_batch[-1]))
+    save_plot("loss_batch.png")
