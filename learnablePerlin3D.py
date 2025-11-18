@@ -55,21 +55,6 @@ def gradientProduct2Img(gradientTensor,tileNumber,tileSize,resolution):
     outputGradient = outputGradient.reshape(4, resolution, resolution)
     return outputGradient
 
-def readTensor(path):
-    data = torch.load(path,weights_only=True)
-
-    scale = data['scale']
-    res = data['res']
-    center = data['center']
-    channelNum = data['channelNum']
-    device = data['device']
-    cornerVecs = data['cornerVecs']
-
-    perlin = PerlinNoise3D(scale, res, center, channelNum, device)
-    perlin.cornerVecs = cornerVecs
-
-    return perlin
-
 class PerlinNoise3D:
     def __init__(self,
                  scale:float = None,
@@ -126,3 +111,18 @@ class PerlinNoise3D:
         value = trilinearInt(smthSteps, gradientVecs)
 
         return value
+
+def readTensor(path) -> PerlinNoise3D:
+    data = torch.load(path,weights_only=True)
+
+    scale = data['scale']
+    res = data['res']
+    center = data['center']
+    channelNum = data['channelNum']
+    device = data['device']
+    cornerVecs = data['cornerVecs']
+
+    perlin = PerlinNoise3D(scale, res, center, channelNum, device)
+    perlin.cornerVecs = cornerVecs
+
+    return perlin

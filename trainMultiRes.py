@@ -6,6 +6,7 @@ import cv2
 import numpy
 import torch
 from PIL import Image
+from pytorch_msssim import SSIM
 from torch import optim
 
 import utils
@@ -19,7 +20,8 @@ def train(
         lr: float = None,
         ifVisualize: bool = False,
         ifSaveGif: bool = False,
-        resultFolder: str = "results") -> List[Any]:
+        resultFolder: str = "results",
+        device: str = "cuda") -> List[Any]:
 
     os.makedirs(resultFolder, exist_ok=True)
 
@@ -31,14 +33,15 @@ def train(
 
     mse_loss = torch.nn.MSELoss()
     mae_loss = torch.nn.L1Loss()
+    ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1, size_average=True, channel=3)
 
     frames = []
     totalLoss = []
     dSteps = 100
-    dAlpha = utils.smoothStepsFunc(dSteps).to(device=cams[0].device)
+    dAlpha = utils.smoothStepsFunc(dSteps).to(device=device)
 
     for iter in range(iterations):
-        random.shuffle(cams)
+        random.shuffle(cameras)
         for cam in cameras:
             p_close, p_far = cam.getDepthRange(perlins[0].center, perlins[0].scale)
             d_start = p_close if p_close > 0. else 0.00001
@@ -50,7 +53,7 @@ def train(
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
             renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
 
-            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum], dtype=torch.float64, device="cuda")
+            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum], dtype=torch.float64, device=device)
             renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
             renderedPoints_Volume[~mask_Volume] = 0.5
 
@@ -61,8 +64,11 @@ def train(
             mask_Flat = torch.any(mask_Volume.reshape(cam.width * cam.height, dSteps), dim=1)
             mask_img = mask_Flat.reshape(cam.width, cam.height)
 
-            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device="cuda")/255.).transpose(0,1)
-            loss = mse_loss(pred_img[mask_img], gtImage[mask_img])
+            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device=device)/255.).transpose(0,1)
+
+            pred_img[~mask_img] = gtImage[~mask_img]
+            loss = 0.9*mse_loss(pred_img, gtImage) + 0.1*(1-ssim_loss(pred_img.unsqueeze(0).permute(0,3,2,1), gtImage.unsqueeze(0).permute(0,3,2,1)))
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -102,15 +108,14 @@ def train(
 
 if __name__ == "__main__":
     dataset = "kitchen"
+    sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
     cams = utils.readColmapSceneInfo(dataset)
-    trainingSetup = "ds_shuffle_mse"
-    outputFolder = "LNPL Data analysis/" + trainingSetup
+    trainingSetup = "ds_shuffle_mse0.9_ssim0.1"
+    outputFolder = f"{dataset}/trained/{trainingSetup}"
 
-    testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
-
-    p3 = PerlinNoise3D(scale=2, res=3, center=testCenter, channelNum=3, device="cuda")
-    p10 = PerlinNoise3D(scale=2, res=10, center=testCenter, channelNum=3, device="cuda")
-    p30 = PerlinNoise3D(scale=2, res=30, center=testCenter, channelNum=3, device="cuda")
+    p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=3, device="cuda")
+    p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=3, device="cuda")
+    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=3, device="cuda")
 
     loss = train([p3,p10,p30], cams, 100, 0.01, True, False, outputFolder)
     loss_arr = numpy.array(loss)

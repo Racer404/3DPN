@@ -1,3 +1,5 @@
+from typing import List
+
 import numpy
 import numpy as np
 import open3d as o3d
@@ -10,7 +12,7 @@ from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlins:[PerlinNoise3D], Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlins:List[PerlinNoise3D], Points:utils.Point3D):
         self.cam = Cam
         self.perlins = Perlins
         self.points = Points
