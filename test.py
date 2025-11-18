@@ -1,29 +1,32 @@
-from learnablePerlin3D import PerlinNoise3D
-import utils
-import torch
-from matplotlib import pyplot as plt
+def logical_to_linear(x, y, z):
+    """
+    Map a 3D logical coordinate (x,y,z) to a linear index,
+    where index 0 is at (0,0,0) and points expand outward
+    in cubic shells (square spiral in 3D).
+    """
+    # Layer / shell
+    r = max(abs(x), abs(y), abs(z))
 
-dataset = "kitchen"
-cams = utils.readColmapSceneInfo(dataset)
-viewerCam = cams[0]
+    if r == 0:
+        return 0  # center point
 
-channels = 3
+    # Number of points in all previous layers
+    base = (2 * r - 1) ** 3  # points in cube of side (2r-1)
 
-dAlpha = utils.smoothStepsFunc(100).to(device=viewerCam.device)
+    # Generate all points in current layer in deterministic order
+    # z-major order: loop z, then y, then x
+    points_in_layer = []
+    for zz in range(-r, r + 1):
+        for yy in range(-r, r + 1):
+            for xx in range(-r, r + 1):
+                if max(abs(xx), abs(yy), abs(zz)) == r:
+                    points_in_layer.append((xx, yy, zz))
 
-testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
-perlin = PerlinNoise3D(scale=1, res=3, center=testCenter, channelNum=channels, device="cuda")
+    # Find the index of (x,y,z) in this layer
+    local_index = points_in_layer.index((x, y, z))
 
-dClose, dFar = viewerCam.getDepthRange(perlin)
-samplePoints_Volume, validPoints = viewerCam.sampleVolumeBySteps(dClose, dFar, 100)
+    return base + local_index
 
-renderedPoints_vol, output_mask_Volume = perlin.getValue(samplePoints_Volume, validPoints)
 
-renderedPoints_Flat = renderedPoints_vol.reshape(viewerCam.width * viewerCam.height, 100, channels)
-renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), dAlpha)
-output = renderedPoints.reshape(viewerCam.width, viewerCam.height, channels)
 
-image = output.transpose(0,1).cpu().detach().numpy()
-
-plt.imshow(image)
-plt.show()
+print(f"index:{logical_to_linear(-2412,1,1)}")

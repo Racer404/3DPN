@@ -10,8 +10,10 @@ viewerCam = cams[0]
 dAlpha = utils.smoothStepsFunc(100).to(device=viewerCam.device)
 
 testCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
-perlin = PerlinNoise3D(scale=1, res=3, center=testCenter, channelNum=3, device="cuda")
+perlin1 = PerlinNoise3D(scale=1, res=3, center=testCenter, channelNum=3, device="cuda")
+perlin2 = PerlinNoise3D(scale=1, res=10, center=testCenter, channelNum=3, device="cuda")
+perlin3 = PerlinNoise3D(scale=1, res=30, center=testCenter, channelNum=3, device="cuda")
 
-viewer = PerlinViewer(viewerCam,[perlin],points)
+viewer = PerlinViewer(viewerCam, [perlin1,perlin2,perlin3], points)
 viewer.start_loop()
 viewer.app.run()

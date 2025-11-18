@@ -1,9 +1,9 @@
+import numpy
 import numpy as np
 import open3d as o3d
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import torch
-from matplotlib import pyplot as plt
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
@@ -48,25 +48,29 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        dClose, dFar = self.cam.getDepthRange(self.perlins[0])
-        samplePoints_Volume, validPoints = self.cam.sampleVolumeBySteps(dClose, dFar, self.dSteps)
+        p_close, p_far = self.cam.getDepthRange(self.perlins[0].center, self.perlins[0].scale)
+        d_start = p_close if p_close > 0. else 0.00001
+        d_end = d_start + self.perlins[0].scale * 1.73205  # 1.73205 ~ sqrt(3)
 
-        output_mask_Volume = None
-        renderedPoints_Volume = 0
-        for p in self.perlins:
-            renderedPoints_vol, output_mask_Volume = p.getValue(samplePoints_Volume, validPoints)
-            renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
-        renderedPoints_Volume = renderedPoints_Volume / len(self.perlins)
+        requestPoints_Volume = self.cam.sampleVolumeBySteps(d_start, d_end, self.dSteps)[0]
+        mask_Volume = utils.maskValidPoints(requestPoints_Volume, self.perlins[0].center, self.perlins[0].scale)
+
+        rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in self.perlins])
+        renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
+
+        renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], self.perlins[0].channelNum], dtype=torch.float64,
+                                            device="cuda")
+        renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+        renderedPoints_Volume[~mask_Volume] = 0.5
 
         renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps, self.perlins[0].channelNum)
         renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), self.dAlpha)
-        output = renderedPoints.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum)
-        image = output.transpose(0,1).contiguous().cpu().detach().numpy()
+        pred_img = renderedPoints.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum)
 
-        # colormap = plt.get_cmap('viridis')
-        # colored_image = colormap(image)
+        showImg = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+        showImg = numpy.clip(showImg, 0., 1.)
 
-        return (image * 255).astype(np.uint8)
+        return (showImg * 255).astype(np.uint8)
 
     def render_pointCloud(self):
         image = torch.zeros([self.cam.height, self.cam.width, 3], dtype=torch.uint8, device="cuda")

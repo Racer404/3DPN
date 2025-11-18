@@ -12,15 +12,6 @@ import utils
 from learnablePerlin3D import PerlinNoise3D
 from matplotlib import pyplot as plt
 
-def maskValidPoints(requestedPoints, p_center, p_scale):
-    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
-    requestedPoints = (requestedPoints - p_center) + toPerlinCenter
-
-    mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
-    valid_mask = mask.all(dim=1)
-
-    return valid_mask
-
 def train(
         perlins: List[PerlinNoise3D] = None,
         cameras: List[utils.Camera] = None,
@@ -54,7 +45,7 @@ def train(
             d_end = d_start + perlins[0].scale * 1.73205  # 1.73205 ~ sqrt(3)
 
             requestPoints_Volume = cam.sampleVolumeBySteps(d_start, d_end, dSteps)[0]
-            mask_Volume = maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
+            mask_Volume = utils.maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
 
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
             renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
