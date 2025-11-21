@@ -1,6 +1,6 @@
 import torch
 
-def returnIndex(requestCorners: torch.Tensor):
+def index3DSpiral(requestCorners: torch.Tensor):
     req_Len = requestCorners.size(0)
 
     req_conj = torch.cat([requestCorners, -requestCorners], dim=1)
@@ -49,13 +49,4 @@ def returnIndex(requestCorners: torch.Tensor):
 
 
     finalIdx = core_count + previous_layer_count + layer_count
-    print(f"core_count:{core_count}")
-    print(f"previous_layer_count:{previous_layer_count}")
-    print(f"layer_count:{layer_count}")
-    print(f"finalIdx:{finalIdx}")
-    pass
-
-n = 5000
-requestCorners = ((torch.rand(n,3)-0.5) * 10).int()
-
-returnIndex(requestCorners)
+    return finalIdx
