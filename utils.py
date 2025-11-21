@@ -43,6 +43,15 @@ def smoothStepsFunc(steps):
 def sigmoid_ix(x, i):
     return 1 / (1 + torch.exp(-i * x))
 
+def maskValidPoints(requestedPoints, p_center, p_scale):
+    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
+    requestedPoints = (requestedPoints - p_center) + toPerlinCenter
+
+    mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
+    valid_mask = mask.all(dim=1)
+
+    return valid_mask
+
 class Camera:
     def __init__(self, width, height, intrinsic, R, t, image):
         self.device = "cuda"

@@ -1,95 +1,61 @@
-import os
-import numpy
-import utils
 import torch
-import cv2
-import learnablePerlin3D
-from matplotlib import  pyplot as plt
 
-dataset = "kitchen"
-cams = utils.readColmapSceneInfo(dataset)
-resultRefCam = cams[10]
+def returnIndex(requestCorners: torch.Tensor):
+    req_Len = requestCorners.size(0)
 
-mainFolder = "LNPL Data analysis/"
+    req_conj = torch.cat([requestCorners, -requestCorners], dim=1)
 
-targetSetups = ["directScale_shuffle_bceLogit/", "directScale_shuffle_mse/", "sig10^2.2fx_shuffle_mse/",
-                "sige^1autoScale(x)_shuttle_mse/", "sige^1minmax(x)_shuffle_mse/", "sige^1x_shuffle_mse/", "sige^10x_shuffle_mse/"]
+    nLayer, face_idx = req_conj.max(dim=1)
+    core_count = torch.pow((2 * nLayer - 1), 3)
 
-# targetSetups = ["test/"]
+    layer_diameter = 2 * nLayer + 1
 
-for targetSetup in targetSetups:
-    p30 = learnablePerlin3D.readTensor(mainFolder+targetSetup+"0.pth")
+    #Diameter of each layer
+    d0 = torch.stack([layer_diameter, layer_diameter], dim = 1)             #+x = n^2
+    d1 = torch.stack([layer_diameter-1, layer_diameter], dim = 1)           #+y = (n-1) * n
+    d2 = torch.stack([layer_diameter-1, layer_diameter-1], dim = 1)         #+z = (n-1)^2
+    d3 = torch.stack([layer_diameter-1, layer_diameter-1], dim = 1)         #-x = (n-1)^2
+    d4 = torch.stack([layer_diameter-1, layer_diameter-2], dim = 1)         #-y = (n-1) * (n-2)
+    d5 = torch.stack([layer_diameter-2, layer_diameter-2], dim = 1)         #-z = (n-2)^2
 
-    dClose, dFar = resultRefCam.getDepthRange(p30.center, p30.scale)
-    dAlpha = utils.smoothStepsFunc(100).to(device=resultRefCam.device)
+    # Size of each layer
+    s0 = d0.prod(dim=1)         #+x = n^2
+    s1 = d1.prod(dim=1)         #+y = (n-1) * n
+    s2 = d2.prod(dim=1)         #+z = (n-1)^2
+    s3 = d3.prod(dim=1)         #-x = (n-1)^2
+    s4 = d4.prod(dim=1)         #-y = (n-1) * (n-2
+    s_base = torch.zeros(req_Len)
+    s_stack = torch.stack([s_base, s0, s1, s2, s3, s4], dim=1)  # shape [N, 6]
+    cumsum_layer_size = s_stack.cumsum(dim=1)  # shape [N, 5]
 
-    samplePoints_Volume, validPoints = resultRefCam.sampleVolumeBySteps(dClose, dFar, 100)
+    previous_layer_count = cumsum_layer_size[torch.arange(req_Len), face_idx]
 
-    renderedPoints_Volume, output_mask_Volume = p30.getValue(samplePoints_Volume, validPoints)
+    conj_idx = face_idx - 3
+    real_idx = torch.where(conj_idx < 0, face_idx, conj_idx)
+    layer_Coor_mask = (torch.arange(3).expand(req_Len, 3) != real_idx.unsqueeze(1))
+    layer_coord = requestCorners[layer_Coor_mask].view(req_Len, 2)
 
-    renderedPoints_Flat = renderedPoints_Volume.reshape(resultRefCam.width * resultRefCam.height, 100)
-    renderedPoints = renderedPoints_Flat @ dAlpha
+    layer_coord_real = layer_coord + nLayer.unsqueeze(1)
 
-    gtImage = (torch.tensor(cv2.imread(resultRefCam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device="cuda")/255.).T
-    gtImage_Flat = gtImage.flatten()
+    # layer_count of each layer
+    l0 = (d0[:, 0]) * layer_coord_real[:, 0] + layer_coord_real[:, 1]                   #+x = d * u + v
+    l1 = (d1[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #+y = (d-1) * u + v
+    l2 = (d2[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #+z = (d-1) * u + v
+    l3 = (d3[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-x = (d-1) * u + v
+    l4 = (d4[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-y = (d-1) * u + v
+    l5 = (d5[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-z = (d-1) * u + v
+    l_stack = torch.stack([l0, l1, l2, l3, l4, l5], dim=1)  # shape [N, 6]
+    layer_count = l_stack[torch.arange(req_Len), face_idx]
 
-    output_mask_Flat = output_mask_Volume.reshape(resultRefCam.width * resultRefCam.height, 100)
-    output_mask = torch.any(output_mask_Flat, dim=1)
 
-    output_img = renderedPoints.reshape(resultRefCam.width, resultRefCam.height)
-    torch.cuda.synchronize()
-    showImg = (output_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
-    showGt = (gtImage.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+    finalIdx = core_count + previous_layer_count + layer_count
+    print(f"core_count:{core_count}")
+    print(f"previous_layer_count:{previous_layer_count}")
+    print(f"layer_count:{layer_count}")
+    print(f"finalIdx:{finalIdx}")
+    pass
 
-    save_dir = mainFolder+targetSetup
+n = 5000
+requestCorners = ((torch.rand(n,3)-0.5) * 10).int()
 
-    cv2.imwrite(os.path.join(save_dir, "trained.png"), showImg)
-    cv2.imwrite(os.path.join(save_dir, "gt.png"), showGt)
-
-    # === Save histograms and plots ===
-    def save_plot(fig_name):
-        """Helper function to save current matplotlib figure."""
-        plt.savefig(os.path.join(save_dir, fig_name))
-        plt.close()
-
-    # volumeValid
-    volumeValid = renderedPoints_Volume[output_mask_Volume].cpu()
-
-    plt.figure()
-    plt.hist(volumeValid, bins=50)
-    save_plot("volumeValid_hist.png")
-
-    plt.figure()
-    plt.plot(volumeValid)
-    save_plot("volumeValid_raw.png")
-
-    # renderedValid & gtValid
-    renderedValid = renderedPoints[output_mask].cpu()
-    gtValid = gtImage_Flat[output_mask].cpu()
-
-    plt.figure()
-    plt.hist(renderedValid, bins=50)
-    save_plot("renderedValid_hist.png")
-
-    plt.figure()
-    plt.hist(gtValid, bins=50)
-    save_plot("gtValid_hist.png")
-
-    plt.figure()
-    plt.plot(renderedValid)
-    save_plot("renderedValid_raw.png")
-
-    plt.figure()
-    plt.plot(gtValid)
-    save_plot("gtValid_raw.png")
-
-    # plotCornerMean
-    plotCornerMean = p30.cornerVecs.mean(dim=1).cpu()
-
-    plt.figure()
-    plt.hist(plotCornerMean, bins=50)
-    save_plot("trainedCornerMean_hist.png")
-
-    plt.figure()
-    plt.plot(plotCornerMean)
-    save_plot("trainedCornerMean_raw.png")
+returnIndex(requestCorners)
