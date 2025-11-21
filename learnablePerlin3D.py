@@ -108,7 +108,7 @@ class PerlinNoise3D:
 
         smthSteps = lerpFunction(coord_inGrid).unsqueeze(dim=-1)
 
-        value = trilinearInt(smthSteps, gradientVecs)
+        value = trilinearInt(smthSteps, gradientVecs) / 2. + 0.5
 
         return value
 

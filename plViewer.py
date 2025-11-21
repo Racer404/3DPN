@@ -58,11 +58,13 @@ class PerlinViewer:
         mask_Volume = utils.maskValidPoints(requestPoints_Volume, self.perlins[0].center, self.perlins[0].scale)
 
         rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in self.perlins])
-        renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
+        renderedPoints_Valid = rendered_perPerlin[0] * rendered_perPerlin[1]
+        # breakpoint()
 
         renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], self.perlins[0].channelNum], dtype=torch.float64,
                                             device="cuda")
-        renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+        # renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+        renderedPoints_Volume[mask_Volume] = renderedPoints_Valid
         renderedPoints_Volume[~mask_Volume] = 0.5
 
         renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps, self.perlins[0].channelNum)

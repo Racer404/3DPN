@@ -51,10 +51,12 @@ def train(
             mask_Volume = utils.maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
 
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
-            renderedPoints_Valid = rendered_perPerlin.mean(dim=0)
+            renderedPoints_Valid = rendered_perPerlin[0] * rendered_perPerlin[1]
+            # breakpoint()
 
             renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum], dtype=torch.float64, device=device)
-            renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+            # renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+            renderedPoints_Volume[mask_Volume] = renderedPoints_Valid
             renderedPoints_Volume[~mask_Volume] = 0.5
 
             renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum)
@@ -108,16 +110,19 @@ def train(
 
 if __name__ == "__main__":
     dataset = "kitchen"
-    sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
+    sceneCenter_kitchen = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
+    sceneCenter_counter = torch.tensor([-0.387438, 1.53506, 1.31345], dtype=torch.float64, device="cuda")
+    sceneCenter_garden = torch.tensor([0.213668, 1.08926, 0.746378], dtype=torch.float64, device="cuda")
     cams = utils.readColmapSceneInfo(dataset)
-    trainingSetup = "ds_shuffle_mse0.9_ssim0.1"
+    trainingSetup = "test_p60*p60alpha"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
-    p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=3, device="cuda")
-    p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=3, device="cuda")
-    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=3, device="cuda")
+    # p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter_counter, channelNum=3, device="cuda")
+    # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter_counter, channelNum=3, device="cuda")
+    p30 = PerlinNoise3D(scale=2, res=60, center=sceneCenter_counter, channelNum=3, device="cuda")
+    p30_a = PerlinNoise3D(scale=2, res=60, center=sceneCenter_counter, channelNum=3, device="cuda")
 
-    loss = train([p3,p10,p30], cams, 100, 0.01, True, False, outputFolder)
+    loss = train([p30,p30_a], cams, 100, 0.01, True, False, outputFolder)
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)
