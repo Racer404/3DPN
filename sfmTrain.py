@@ -11,18 +11,6 @@ import utils
 from learnablePerlin3D import PerlinNoise3D
 from matplotlib import pyplot as plt
 
-
-def compute_intrinsic_matrix(fov_deg, width, height):
-    fov_rad = np.deg2rad(fov_deg)
-    fx = fy = 0.5 * width / np.tan(fov_rad / 2)
-    cx = width / 2
-    cy = height / 2
-    return np.array([
-        [fx,  0, cx],
-        [0,  fy, cy],
-        [0,   0,  1]
-    ], dtype=np.float64)
-
 def train(
         perlin: PerlinNoise3D = None,
         cameras: [utils.Camera] = None,

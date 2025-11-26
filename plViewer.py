@@ -6,16 +6,17 @@ import torch
 from matplotlib import pyplot as plt
 from typing import List
 
+import learnablePerlin3D
 import utils
 from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlins: List[PerlinNoise3D], Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlin: PerlinNoise3D, Points:utils.Point3D):
         self.cam = Cam
-        self.perlins = Perlins
+        self.perlin = Perlin
         self.points = Points
-        self.dSteps = 100
+        self.dSteps = 10
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
 
         self.app = gui.Application.instance
@@ -31,9 +32,9 @@ class PerlinViewer:
 
         self.scene_box.scene = rendering.Open3DScene(self.window.renderer)
         # Set up camera based on geometry
-        box = o3d.geometry.TriangleMesh.create_box(width=self.perlins[0].scale, height=self.perlins[0].scale, depth=self.perlins[0].scale)
+        box = o3d.geometry.TriangleMesh.create_box(width=1, height=1, depth=1)
         box.translate(-box.get_center())
-        box.translate(self.perlins[0].center.cpu())
+        box.translate(self.perlin.center.cpu())
         box.compute_vertex_normals()
         self.scene_box.scene.add_geometry("box", box, rendering.MaterialRecord())
         bbox = box.get_axis_aligned_bounding_box()
@@ -49,15 +50,10 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        dClose, dFar = self.cam.getDepthRange(self.perlins[0].center, self.perlins[0].scale)
-        samplePoints_Volume, validPoints = self.cam.sampleVolumeBySteps(dClose, dFar, self.dSteps)
-
-        output_mask_Volume = None
-        renderedPoints_Volume = 0
-        for p in self.perlins:
-            renderedPoints_vol, output_mask_Volume = p.getValue(samplePoints_Volume, validPoints)
-            renderedPoints_Volume = renderedPoints_Volume + renderedPoints_vol
-        renderedPoints_Volume = renderedPoints_Volume / len(self.perlins)
+        p_close = 0.00001
+        p_far = 2.00001
+        samplePoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
+        renderedPoints_Volume = self.perlin.getValue(samplePoints_Volume) / 2. + 0.5
 
         renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
         renderedPoints = renderedPoints_Flat @ self.dAlpha

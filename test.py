@@ -1,52 +1,40 @@
+from typing import Tuple
+
 import torch
-
-def index3DSpiral(requestCorners: torch.Tensor):
-    req_Len = requestCorners.size(0)
-
-    req_conj = torch.cat([requestCorners, -requestCorners], dim=1)
-
-    nLayer, face_idx = req_conj.max(dim=1)
-    core_count = torch.pow((2 * nLayer - 1), 3)
-
-    layer_diameter = 2 * nLayer + 1
-
-    #Diameter of each layer
-    d0 = torch.stack([layer_diameter, layer_diameter], dim = 1)             #+x = n^2
-    d1 = torch.stack([layer_diameter-1, layer_diameter], dim = 1)           #+y = (n-1) * n
-    d2 = torch.stack([layer_diameter-1, layer_diameter-1], dim = 1)         #+z = (n-1)^2
-    d3 = torch.stack([layer_diameter-1, layer_diameter-1], dim = 1)         #-x = (n-1)^2
-    d4 = torch.stack([layer_diameter-1, layer_diameter-2], dim = 1)         #-y = (n-1) * (n-2)
-    d5 = torch.stack([layer_diameter-2, layer_diameter-2], dim = 1)         #-z = (n-2)^2
-
-    # Size of each layer
-    s0 = d0.prod(dim=1)         #+x = n^2
-    s1 = d1.prod(dim=1)         #+y = (n-1) * n
-    s2 = d2.prod(dim=1)         #+z = (n-1)^2
-    s3 = d3.prod(dim=1)         #-x = (n-1)^2
-    s4 = d4.prod(dim=1)         #-y = (n-1) * (n-2
-    s_base = torch.zeros(req_Len)
-    s_stack = torch.stack([s_base, s0, s1, s2, s3, s4], dim=1)  # shape [N, 6]
-    cumsum_layer_size = s_stack.cumsum(dim=1)  # shape [N, 5]
-
-    previous_layer_count = cumsum_layer_size[torch.arange(req_Len), face_idx]
-
-    conj_idx = face_idx - 3
-    real_idx = torch.where(conj_idx < 0, face_idx, conj_idx)
-    layer_Coor_mask = (torch.arange(3).expand(req_Len, 3) != real_idx.unsqueeze(1))
-    layer_coord = requestCorners[layer_Coor_mask].view(req_Len, 2)
-
-    layer_coord_real = layer_coord + nLayer.unsqueeze(1)
-
-    # layer_count of each layer
-    l0 = (d0[:, 0]) * layer_coord_real[:, 0] + layer_coord_real[:, 1]                   #+x = d * u + v
-    l1 = (d1[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #+y = (d-1) * u + v
-    l2 = (d2[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #+z = (d-1) * u + v
-    l3 = (d3[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-x = (d-1) * u + v
-    l4 = (d4[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-y = (d-1) * u + v
-    l5 = (d5[:, 0] - 1) * layer_coord_real[:, 0] + layer_coord_real[:, 1]               #-z = (d-1) * u + v
-    l_stack = torch.stack([l0, l1, l2, l3, l4, l5], dim=1)  # shape [N, 6]
-    layer_count = l_stack[torch.arange(req_Len), face_idx]
+from torch import Tensor
 
 
-    finalIdx = core_count + previous_layer_count + layer_count
-    return finalIdx
+def getCornerByCoor(res:int, reqCoor: torch.Tensor) -> Tuple[Tensor, Tensor]:
+    coords = reqCoor * res
+
+    x0 = coords[:, 0].floor()
+    x1 = coords[:, 0].ceil()
+    y0 = coords[:, 1].floor()
+    y1 = coords[:, 1].ceil()
+    z0 = coords[:, 2].floor()
+    z1 = coords[:, 2].ceil()
+
+    corner000 = torch.stack([x0, y0, z0], dim=1)
+    corner100 = torch.stack([x1, y0, z0], dim=1)
+    corner010 = torch.stack([x0, y1, z0], dim=1)
+    corner110 = torch.stack([x1, y1, z0], dim=1)
+    corner001 = torch.stack([x0, y0, z1], dim=1)
+    corner101 = torch.stack([x1, y0, z1], dim=1)
+    corner011 = torch.stack([x0, y1, z1], dim=1)
+    corner111 = torch.stack([x1, y1, z1], dim=1)
+
+    corners = torch.stack([
+        corner000,
+        corner100,
+        corner010,
+        corner110,
+        corner001,
+        corner101,
+        corner011,
+        corner111,
+    ], dim=1)
+
+    offsets = coords.unsqueeze(dim=1).expand(-1,8,-1) - corners
+
+    return corners, offsets
+

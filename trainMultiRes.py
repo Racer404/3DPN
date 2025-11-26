@@ -89,21 +89,9 @@ def train(
 
         if ifSaveGif:
             print("UNDER CONSTRUCTION")
-            # pred_img, mask = renderfromCamRay(resultRefCam, perlins, dSteps, dAlpha)
-            # torch.cuda.synchronize()
-            # frames.append((pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8))
 
     if ifSaveGif:
         print("UNDER CONSTRUCTION")
-        # gif = [Image.fromarray(frame) for frame in frames]
-        # gif[0].save(
-        #     f"{resultFolder}/training.gif",
-        #     save_all=True,
-        #     append_images=gif[1:],
-        #     optimize=False,
-        #     duration=1,
-        #     loop=0,
-        # )
 
     for idx,p in enumerate(perlins):
         p.cornerVecs.requires_grad_(False)
