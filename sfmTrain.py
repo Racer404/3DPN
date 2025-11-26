@@ -43,10 +43,10 @@ def train(
     for iter in range(iterations):
         random.shuffle(cams)
         for cam in cameras:
-            p_close = 0.00001
-            p_far = 2.00001
+            p_close = 2.
+            p_far = 4.5
             samplePoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
-            renderedPoints_Volume = perlin.getValue(samplePoints_Volume) / 2. + 0.5
+            renderedPoints_Volume = perlin.getValue(samplePoints_Volume, optimizer) / 2. + 0.5
 
             renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
             renderedPoints = renderedPoints_Flat @ dAlpha
@@ -92,7 +92,7 @@ if __name__ == "__main__":
     sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
 
     cams = utils.readColmapSceneInfo(dataset)
-    perlin = PerlinNoise3D(res=2, center=sceneCenter, device="cuda")
+    perlin = PerlinNoise3D(res=10, center=sceneCenter, device="cuda")
 
     loss = train(perlin, cams, 100, 0.01, True, False, outputFolder)
 

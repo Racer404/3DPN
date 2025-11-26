@@ -2,6 +2,7 @@ from typing import Tuple
 
 import torch
 from torch import Tensor
+import torch.nn as nn
 
 
 def index3DSpiralByCorner(requestCorners: torch.Tensor):
@@ -137,31 +138,52 @@ def readTensor(path):
     #
     # return perlin
 
-class PerlinNoise3D:
+class PerlinNoise3D(nn.Module):
     def __init__(self,
                  res:int = None,
                  center = torch.tensor([0.,0.,0.],dtype=torch.float64),
                  device:str = None
                  ):
+        super().__init__()
         self.loss = None
 
         self.center = center.to(device=device)
         self.res = res
         self.device = device
-        self.cornerVecs = (torch.rand([(2 * self.res + 1) ** 3, 3], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
-        self.cornerVecs.requires_grad = False
+        initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
+        self.cornerVecs = nn.Parameter(initial_D)
 
     def writeTensor(self, path):
         # writingPath = path
         # torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
         pass
 
-    def extendCorners(self, targetIdx):
-        targetIdx = targetIdx + 1
-        newCorners = (torch.rand([targetIdx - self.cornerVecs.shape[0], 3], dtype=torch.float64, device=self.device) - 0.5) * 2.
-        self.cornerVecs = torch.cat([self.cornerVecs, newCorners])
+    # def extendCorners(self, targetIdx):
+    #     targetIdx = targetIdx + 1
+    #     newCorners = (torch.rand([targetIdx - self.cornerVecs.shape[0], 3], dtype=torch.float64, device=self.device) - 0.5) * 2.
+    #     self.cornerVecs = torch.cat([self.cornerVecs, newCorners])
 
-    def getValue(self, requestedPoints):
+    def extendCorners(self, target_idx, optimizer):
+        target_idx = target_idx + 1
+        needed = target_idx - self.cornerVecs.shape[0]
+        if needed <= 0:
+            return
+
+        # create new rows
+        new_rows = torch.randn(needed, 3, device=self.cornerVecs.device)
+
+        # create a NEW parameter by concatenating old + new
+        new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
+
+        # replace the parameter inside the model
+        self.cornerVecs = new_param
+
+        # replace inside optimizer (NO LOOP, very fast)
+        optimizer.param_groups[0]['params'] = [self.cornerVecs]
+
+        print(f"Extended parameter to size {self.cornerVecs.shape[0]}")
+
+    def getValue(self, requestedPoints, opt):
         requestedPoints_ = requestedPoints-self.center
 
         corners, offsets = getCornerByCoor(self.res, requestedPoints_)
@@ -169,7 +191,7 @@ class PerlinNoise3D:
         reqVec_idx = index3DSpiralByCorner(corners_flat)
 
         if reqVec_idx.max() >= self.cornerVecs.shape[0]:
-            self.extendCorners(int(reqVec_idx.max().item()))
+            self.extendCorners(int(reqVec_idx.max().item()), opt)
             print(f"extended to {reqVec_idx.max()} ?")
 
         chunk = 500_000 * 8 #Chunk to control the GPU usage per batch

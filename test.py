@@ -1,40 +1,69 @@
-from typing import Tuple
-
 import torch
-from torch import Tensor
+import torch.nn as nn
+import torch.optim as optim
 
 
-def getCornerByCoor(res:int, reqCoor: torch.Tensor) -> Tuple[Tensor, Tensor]:
-    coords = reqCoor * res
+class GrowableModel(nn.Module):
+    def __init__(self, init_size=4, device='cuda'):
+        super().__init__()
+        data = torch.randn(init_size, 3, device=device)
+        self.x = nn.Parameter(data)  # trainable tensor
 
-    x0 = coords[:, 0].floor()
-    x1 = coords[:, 0].ceil()
-    y0 = coords[:, 1].floor()
-    y1 = coords[:, 1].ceil()
-    z0 = coords[:, 2].floor()
-    z1 = coords[:, 2].ceil()
+    def extend(self, target_idx, optimizer):
+        target_idx = target_idx + 1
+        needed = target_idx - self.x.shape[0]
+        if needed <= 0:
+            return
 
-    corner000 = torch.stack([x0, y0, z0], dim=1)
-    corner100 = torch.stack([x1, y0, z0], dim=1)
-    corner010 = torch.stack([x0, y1, z0], dim=1)
-    corner110 = torch.stack([x1, y1, z0], dim=1)
-    corner001 = torch.stack([x0, y0, z1], dim=1)
-    corner101 = torch.stack([x1, y0, z1], dim=1)
-    corner011 = torch.stack([x0, y1, z1], dim=1)
-    corner111 = torch.stack([x1, y1, z1], dim=1)
+        # create new rows
+        new_rows = torch.randn(needed, 3, device=self.x.device)
 
-    corners = torch.stack([
-        corner000,
-        corner100,
-        corner010,
-        corner110,
-        corner001,
-        corner101,
-        corner011,
-        corner111,
-    ], dim=1)
+        # create a NEW parameter by concatenating old + new
+        new_param = nn.Parameter(torch.cat([self.x.data, new_rows], dim=0))
 
-    offsets = coords.unsqueeze(dim=1).expand(-1,8,-1) - corners
+        # replace the parameter inside the model
+        self.x = new_param
 
-    return corners, offsets
+        # replace inside optimizer (NO LOOP, very fast)
+        optimizer.param_groups[0]['params'] = [self.x]
 
+        print(f"Extended parameter to size {self.x.shape[0]}")
+
+    def forward(self, indices):
+        # indices is a tensor selecting rows of x
+        return torch.index_select(self.x, 0, indices)
+
+
+# ----------------------------
+# Training loop
+# ----------------------------
+
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+model = GrowableModel(init_size=4, device=device)
+optimizer = optim.Adam([model.x], lr=0.01)
+loss_fn = nn.MSELoss()
+
+for step in range(30):
+    # simulate some random "access pattern"
+    idx = torch.randint(low=0, high=model.x.shape[0] + 3, size=(5,), device=device)
+
+    # If idx exceeds current size, extend parameter
+    max_idx = idx.max().item()
+    if max_idx >= model.x.shape[0]:
+        model.extend(max_idx, optimizer)
+
+    # forward: pick rows
+    out = model(idx)
+
+    # target is just zeros for demo
+    target = torch.zeros_like(out)
+
+    # compute loss
+    loss = loss_fn(out, target)
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
+    print(f"Step {step:02d}, loss = {loss.item():.6f}, size = {model.x.shape[0]}")
