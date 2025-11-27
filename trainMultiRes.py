@@ -50,18 +50,19 @@ def train(
             requestPoints_Volume = cam.sampleVolumeBySteps(d_start, d_end, dSteps)[0]
             mask_Volume = utils.maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
 
-            rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins])
-            renderedPoints_Valid = rendered_perPerlin[0] * rendered_perPerlin[1]
-            # breakpoint()
+            rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins]) / 2. + 0.5 #Direct Scale
+            rendered_perPerlin_color = rendered_perPerlin[:,:,0:perlins[0].channelNum - 1]
+            rendered_perPerlin_alpha = rendered_perPerlin[:,:,perlins[0].channelNum - 1:perlins[0].channelNum]
+            renderedPoints_Valid = (rendered_perPerlin_color * rendered_perPerlin_alpha).mean(dim=0)
 
-            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum], dtype=torch.float64, device=device)
-            # renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
+            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum - 1], dtype=torch.float64, device=device)
             renderedPoints_Volume[mask_Volume] = renderedPoints_Valid
-            renderedPoints_Volume[~mask_Volume] = 0.5
+            renderedPoints_Volume[~mask_Volume] = 0.
 
-            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum)
+            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum-1)
+            # renderedPoints = renderedPoints_Flat.mean(dim=1)
             renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), dAlpha)
-            pred_img = renderedPoints.reshape(cam.width, cam.height, perlins[0].channelNum)
+            pred_img = renderedPoints.reshape(cam.width, cam.height, perlins[0].channelNum-1)
 
             mask_Flat = torch.any(mask_Volume.reshape(cam.width * cam.height, dSteps), dim=1)
             mask_img = mask_Flat.reshape(cam.width, cam.height)
@@ -110,19 +111,16 @@ def train(
 
 if __name__ == "__main__":
     dataset = "kitchen"
-    sceneCenter_kitchen = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
-    sceneCenter_counter = torch.tensor([-0.387438, 1.53506, 1.31345], dtype=torch.float64, device="cuda")
-    sceneCenter_garden = torch.tensor([0.213668, 1.08926, 0.746378], dtype=torch.float64, device="cuda")
+    sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
     cams = utils.readColmapSceneInfo(dataset)
-    trainingSetup = "test_p60*p60alpha"
+    trainingSetup = "ds_shuffle_mse0.9_ssim0.1_alphaChannel"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
-    # p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter_counter, channelNum=3, device="cuda")
-    # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter_counter, channelNum=3, device="cuda")
-    p30 = PerlinNoise3D(scale=2, res=60, center=sceneCenter_counter, channelNum=3, device="cuda")
-    p30_a = PerlinNoise3D(scale=2, res=60, center=sceneCenter_counter, channelNum=3, device="cuda")
+    p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
+    p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
+    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
 
-    loss = train([p30,p30_a], cams, 100, 0.01, True, False, outputFolder)
+    loss = train([p3,p10,p30], cams, 100, 0.01, True, False, outputFolder)
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)
