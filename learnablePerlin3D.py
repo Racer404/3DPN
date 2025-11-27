@@ -179,9 +179,10 @@ class PerlinNoise3D(nn.Module):
         self.cornerVecs = new_param
 
         # replace inside optimizer (NO LOOP, very fast)
-        optimizer.param_groups[0]['params'] = [self.cornerVecs]
+        if optimizer is not None:
+            optimizer.param_groups[0]['params'] = [self.cornerVecs]
 
-        print(f"Extended parameter to size {self.cornerVecs.shape[0]}")
+        print(f"Extended parameter to size {target_idx}")
 
     def getValue(self, requestedPoints, opt):
         requestedPoints_ = requestedPoints-self.center
@@ -192,7 +193,6 @@ class PerlinNoise3D(nn.Module):
 
         if reqVec_idx.max() >= self.cornerVecs.shape[0]:
             self.extendCorners(int(reqVec_idx.max().item()), opt)
-            print(f"extended to {reqVec_idx.max()} ?")
 
         chunk = 500_000 * 8 #Chunk to control the GPU usage per batch
         gradient_out = []

@@ -16,7 +16,7 @@ class PerlinViewer:
         self.cam = Cam
         self.perlin = Perlin
         self.points = Points
-        self.dSteps = 10
+        self.dSteps = 2
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
 
         self.app = gui.Application.instance
@@ -53,7 +53,7 @@ class PerlinViewer:
         p_close = 0.00001
         p_far = 2.00001
         samplePoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
-        renderedPoints_Volume = self.perlin.getValue(samplePoints_Volume) / 2. + 0.5
+        renderedPoints_Volume = self.perlin.getValue(samplePoints_Volume, None) / 2. + 0.5
 
         renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
         renderedPoints = renderedPoints_Flat @ self.dAlpha
