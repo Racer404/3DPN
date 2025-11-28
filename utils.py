@@ -215,59 +215,59 @@ def getPOIfromCamsZ(cameras: List[Camera], Z):
 
     return p_mean, p_var
 
-def triangulate_unconstrained(cameras: List, eps: float = 1e-12) -> Tuple[torch.Tensor, dict]:
-    device = cameras[0].R.device
-    dtype = cameras[0].R.dtype
-
-    Cs = []
-    ds = []
-
-    for cam in cameras:
-        R_cw = cam.R
-        t_cw = cam.t
-        R_wc = R_cw.T
-        C = -R_cw.T @ t_cw
-
-        d = R_wc[:, 2]
-        d = d / (d.norm() + 1e-20)
-
-        Cs.append(C)
-        ds.append(d)
-
-    Cs = torch.stack(Cs, dim=0)   # (N,3)
-    ds = torch.stack(ds, dim=0)   # (N,3)
-    N = Cs.shape[0]
-
-    I = torch.eye(3, device=device, dtype=dtype)
-
-    A = torch.zeros((3,3), device=device, dtype=dtype)
-    b = torch.zeros((3,), device=device, dtype=dtype)
-    for i in range(N):
-        d = ds[i].unsqueeze(1)
-        P = I - (d @ d.T)
-        A += P
-        b += P @ Cs[i]
-
-    try:
-        X = torch.linalg.solve(A, b)
-    except RuntimeError:
-        A_reg = A + eps * torch.eye(3, device=device, dtype=dtype)
-        X = torch.linalg.lstsq(A_reg, b.unsqueeze(1)).solution.squeeze()
-
-    if not torch.isfinite(X).all():
-        X = torch.linalg.pinv(A + eps * torch.eye(3, device=device, dtype=dtype)) @ b
-
-    diffs = X.unsqueeze(0) - Cs            # (N,3)
-    s_star = (diffs * ds).sum(dim=1)       # (N,)
-    per_cam_closest = Cs + s_star.unsqueeze(1) * ds
-
-    residuals = (X.unsqueeze(0) - per_cam_closest).norm(dim=1)
-
-    info = {
-        'A': A,
-        'b': b,
-        'per_cam_closest': per_cam_closest,
-        'residuals': residuals
-    }
-
-    return X, info
+# def triangulate_unconstrained(cameras: List, eps: float = 1e-12) -> Tuple[torch.Tensor, dict]:
+#     device = cameras[0].R.device
+#     dtype = cameras[0].R.dtype
+#
+#     Cs = []
+#     ds = []
+#
+#     for cam in cameras:
+#         R_cw = cam.R
+#         t_cw = cam.t
+#         R_wc = R_cw.T
+#         C = -R_cw.T @ t_cw
+#
+#         d = R_wc[:, 2]
+#         d = d / (d.norm() + 1e-20)
+#
+#         Cs.append(C)
+#         ds.append(d)
+#
+#     Cs = torch.stack(Cs, dim=0)   # (N,3)
+#     ds = torch.stack(ds, dim=0)   # (N,3)
+#     N = Cs.shape[0]
+#
+#     I = torch.eye(3, device=device, dtype=dtype)
+#
+#     A = torch.zeros((3,3), device=device, dtype=dtype)
+#     b = torch.zeros((3,), device=device, dtype=dtype)
+#     for i in range(N):
+#         d = ds[i].unsqueeze(1)
+#         P = I - (d @ d.T)
+#         A += P
+#         b += P @ Cs[i]
+#
+#     try:
+#         X = torch.linalg.solve(A, b)
+#     except RuntimeError:
+#         A_reg = A + eps * torch.eye(3, device=device, dtype=dtype)
+#         X = torch.linalg.lstsq(A_reg, b.unsqueeze(1)).solution.squeeze()
+#
+#     if not torch.isfinite(X).all():
+#         X = torch.linalg.pinv(A + eps * torch.eye(3, device=device, dtype=dtype)) @ b
+#
+#     diffs = X.unsqueeze(0) - Cs            # (N,3)
+#     s_star = (diffs * ds).sum(dim=1)       # (N,)
+#     per_cam_closest = Cs + s_star.unsqueeze(1) * ds
+#
+#     residuals = (X.unsqueeze(0) - per_cam_closest).norm(dim=1)
+#
+#     info = {
+#         'A': A,
+#         'b': b,
+#         'per_cam_closest': per_cam_closest,
+#         'residuals': residuals
+#     }
+#
+#     return X, info
