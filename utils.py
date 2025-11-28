@@ -149,16 +149,123 @@ class Point3D:
         self.errors = errors.to(device=self.device)
         pass
 
-def getPOI(cameras: List[Camera]): #Need further improvement
-    Rs = torch.stack([cam.R for cam in cameras])
-    R_3 = Rs[:,:,2]
-    t = torch.stack([cam.t for cam in cameras])
+def getDOIfromCams(cameras: List[Camera]):
+    R_wc = []
+    t_wc = []
 
-    u_R = torch.mean(R_3, dim = 0)
-    u_t = torch.mean(t, dim = 0)
+    for cam in cameras:
+        R_cw = cam.R
+        t_cw = cam.t
 
-    optimalZ = torch.sum((R_3-u_R)*(t-u_t),dim=0) / torch.sum((R_3-u_R)**2,dim = 0)
-    var_cPtoMean = torch.sum((torch.mean((optimalZ*R_3 + t), dim = 0) - (optimalZ*R_3 + t))**2, dim = 0) / len(cameras)
+        R_wci = R_cw.T
+        C_i = -R_cw.T @ t_cw
 
-    breakpoint()
-    return optimalZ
+        R_wc.append(R_wci)
+        t_wc.append(C_i)
+
+    R_wc = torch.stack(R_wc)
+    t_wc = torch.stack(t_wc)
+
+    R3 = R_wc[:, :, 2]
+
+    # Means
+    c_mean = R3.mean(dim=0)
+    t_mean = t_wc.mean(dim=0)
+
+    # a_i and b_i
+    a = R3 - c_mean
+    b = t_wc - t_mean
+
+    # Quadratic coefficients
+    A = (a * a).sum()
+    B = (a * b).sum()
+
+    eps = 1e-12
+    if A.abs() < eps:
+        Z = torch.tensor(0.0, dtype=R3.dtype)
+    else:
+        Z = -B / A
+
+    return Z
+
+
+def getPOIfromCamsZ(cameras: List[Camera], Z):
+    R_wc = []
+    t_wc = []
+
+    for cam in cameras:
+        R_cw = cam.R
+        t_cw = cam.t
+        R_wci = R_cw.T             # camera→world
+        C_i = -R_cw.T @ t_cw       # camera center
+
+        R_wc.append(R_wci)
+        t_wc.append(C_i)
+
+    R_wc = torch.stack(R_wc)
+    t_wc = torch.stack(t_wc)
+
+    R3 = R_wc[:, :, 2]             # (N,3)
+
+    p = R3 * Z + t_wc              # (N,3)
+    p_mean = p.mean(dim=0)
+    p_var = ((p - p_mean) ** 2).sum() / len(cameras)
+
+    return p_mean, p_var
+
+# def triangulate_unconstrained(cameras: List, eps: float = 1e-12) -> Tuple[torch.Tensor, dict]:
+#     device = cameras[0].R.device
+#     dtype = cameras[0].R.dtype
+#
+#     Cs = []
+#     ds = []
+#
+#     for cam in cameras:
+#         R_cw = cam.R
+#         t_cw = cam.t
+#         R_wc = R_cw.T
+#         C = -R_cw.T @ t_cw
+#
+#         d = R_wc[:, 2]
+#         d = d / (d.norm() + 1e-20)
+#
+#         Cs.append(C)
+#         ds.append(d)
+#
+#     Cs = torch.stack(Cs, dim=0)   # (N,3)
+#     ds = torch.stack(ds, dim=0)   # (N,3)
+#     N = Cs.shape[0]
+#
+#     I = torch.eye(3, device=device, dtype=dtype)
+#
+#     A = torch.zeros((3,3), device=device, dtype=dtype)
+#     b = torch.zeros((3,), device=device, dtype=dtype)
+#     for i in range(N):
+#         d = ds[i].unsqueeze(1)
+#         P = I - (d @ d.T)
+#         A += P
+#         b += P @ Cs[i]
+#
+#     try:
+#         X = torch.linalg.solve(A, b)
+#     except RuntimeError:
+#         A_reg = A + eps * torch.eye(3, device=device, dtype=dtype)
+#         X = torch.linalg.lstsq(A_reg, b.unsqueeze(1)).solution.squeeze()
+#
+#     if not torch.isfinite(X).all():
+#         X = torch.linalg.pinv(A + eps * torch.eye(3, device=device, dtype=dtype)) @ b
+#
+#     diffs = X.unsqueeze(0) - Cs            # (N,3)
+#     s_star = (diffs * ds).sum(dim=1)       # (N,)
+#     per_cam_closest = Cs + s_star.unsqueeze(1) * ds
+#
+#     residuals = (X.unsqueeze(0) - per_cam_closest).norm(dim=1)
+#
+#     info = {
+#         'A': A,
+#         'b': b,
+#         'per_cam_closest': per_cam_closest,
+#         'residuals': residuals
+#     }
+#
+#     return X, info
