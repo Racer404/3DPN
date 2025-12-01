@@ -124,19 +124,17 @@ def lerpFunction(x):
     return newX
 
 def readTensor(path):
-    pass
-    # data = torch.load(path,weights_only=True)
-    #
-    # scale = data['scale']
-    # res = data['res']
-    # center = data['center']
-    # device = data['device']
-    # cornerVecs = data['cornerVecs']
-    #
-    # perlin = PerlinNoise3D(scale, res, center, device)
-    # perlin.cornerVecs = cornerVecs
-    #
-    # return perlin
+    data = torch.load(path,weights_only=True)
+
+    res = data['res']
+    center = data['center']
+    device = data['device']
+    cornerVecs = data['cornerVecs']
+
+    perlin = PerlinNoise3D(res, center, device)
+    perlin.cornerVecs = cornerVecs
+
+    return perlin
 
 class PerlinNoise3D(nn.Module):
     def __init__(self,
@@ -147,21 +145,16 @@ class PerlinNoise3D(nn.Module):
         super().__init__()
         self.loss = None
 
-        self.center = center.to(device=device)
         self.res = res
+        self.center = center.to(device=device)
         self.device = device
         initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
         self.cornerVecs = nn.Parameter(initial_D)
 
     def writeTensor(self, path):
-        # writingPath = path
-        # torch.save({'scale': self.scale, 'res': self.tileNumber, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
+        writingPath = path
+        torch.save({'res': self.res, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
         pass
-
-    # def extendCorners(self, targetIdx):
-    #     targetIdx = targetIdx + 1
-    #     newCorners = (torch.rand([targetIdx - self.cornerVecs.shape[0], 3], dtype=torch.float64, device=self.device) - 0.5) * 2.
-    #     self.cornerVecs = torch.cat([self.cornerVecs, newCorners])
 
     def extendCorners(self, target_idx, optimizer):
         target_idx = target_idx + 1
@@ -169,23 +162,19 @@ class PerlinNoise3D(nn.Module):
         if needed <= 0:
             return
 
-        # create new rows
         new_rows = torch.randn(needed, 3, device=self.cornerVecs.device)
 
-        # create a NEW parameter by concatenating old + new
         new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
 
-        # replace the parameter inside the model
         self.cornerVecs = new_param
 
-        # replace inside optimizer (NO LOOP, very fast)
         if optimizer is not None:
             optimizer.param_groups[0]['params'] = [self.cornerVecs]
 
         print(f"Extended parameter to size {target_idx}")
 
     def getValue(self, requestedPoints, opt):
-        requestedPoints_ = requestedPoints-self.center
+        requestedPoints_ = requestedPoints - self.center
 
         corners, offsets = getCornerByCoor(self.res, requestedPoints_)
         corners_flat = corners.reshape([-1,3])

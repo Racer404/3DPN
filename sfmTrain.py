@@ -5,6 +5,7 @@ from typing import List, Any
 import cv2
 import numpy
 import torch
+from PIL import Image
 from matplotlib import pyplot as plt
 from pytorch_msssim import SSIM
 from torch import optim
@@ -18,11 +19,13 @@ def train(
         cameras: List[utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
+        dSteps: int = None,
         ifVisualize: bool = False,
         ifSaveGif: bool = False,
         resultFolder: str = "results",
         device: str = "cuda") -> List[Any]:
 
+    ref_cams = cameras[:]
     os.makedirs(resultFolder, exist_ok=True)
 
     perlin.cornerVecs.requires_grad_(True)
@@ -37,7 +40,6 @@ def train(
 
     frames = []
     totalLoss = []
-    dSteps = 10
     dAlpha = utils.smoothStepsFunc(dSteps).to(device=device)
 
     for iter in range(iterations):
@@ -74,11 +76,30 @@ def train(
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
-        if ifSaveGif:
-            print("UNDER CONSTRUCTION")
+            if ifSaveGif:
+                if cam is ref_cams[10]:
+                    saveImg = (pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    frames.append(saveImg)
+
+            if iter is (iterations-1):
+                if cam is ref_cams[10]:
+                    saveImg = (pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    saveGt = (gtImage.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    cv2.imwrite(f"{resultFolder}/pred.png", cv2.cvtColor(saveImg, cv2.COLOR_RGB2BGR))
+                    cv2.imwrite(f"{resultFolder}/gt.png", cv2.cvtColor(saveGt, cv2.COLOR_RGB2BGR))
 
     if ifSaveGif:
-        print("UNDER CONSTRUCTION")
+        gif = [Image.fromarray(frame) for frame in frames]
+        out_dir = os.path.join(os.getcwd(), "results")
+        os.makedirs(out_dir, exist_ok=True)
+        gif[0].save(
+            f"{resultFolder}/training.gif",
+            save_all=True,
+            append_images=gif[1:],
+            optimize=False,
+            duration=1,
+            loop=0,
+        )
 
     perlin.cornerVecs.requires_grad_(False)
     perlin.writeTensor(f"{resultFolder}/0.pth")
@@ -89,19 +110,19 @@ if __name__ == "__main__":
     dataset = "kitchen"
     trainingSetup = "test_INF"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
-    sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
 
     cams = utils.readColmapSceneInfo(dataset)
-    perlin = PerlinNoise3D(res=10, center=sceneCenter, device="cuda")
+    optimalZ = utils.getDOIfromCams(cams)
+    sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
+    perlin = PerlinNoise3D(res=2, center=sceneCenter, device="cuda")
 
-    loss = train(perlin, cams, 100, 0.01, True, False, outputFolder)
+    loss = train(perlin, cams, 5, 0.01, 10, True, True, outputFolder)
 
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)
     torch.cuda.synchronize()
     ## END OF TRAINING
-
 
 
     # === Save histograms and plots ===
