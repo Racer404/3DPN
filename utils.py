@@ -40,6 +40,38 @@ def smoothStepsFunc(steps):
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
     return alpha
 
+def renderVolume_stepsMean(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    channels = volume_Valid.shape[1]
+    volume = volume_Mask.shape[0]
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume[volume_Mask] = volume_Valid
+    renderedPoints_Volume[~volume_Mask] = 0.
+
+    renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
+    mask_dLayers = volume_Mask.reshape(-1, dSteps)
+
+    rendered_Flat = renderedPoints_dLayers.mean(dim=1)    #Every points on a ray
+    # rendered_Flat = renderedPoints_dLayers.sum(dim=1)/mask_dLayers.sum(dim=1).unsqueeze(-1)     #Only consider valid points on a ray
+    mask_Flat = torch.any(mask_dLayers, dim=1)
+
+    return rendered_Flat, mask_Flat
+
+def renderVolume_stepsDecay(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    channels = volume_Valid.shape[1]
+    volume = volume_Mask.shape[0]
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume[volume_Mask] = volume_Valid
+    renderedPoints_Volume[~volume_Mask] = 0.
+
+    renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
+    mask_dLayers = volume_Mask.reshape(-1, dSteps)
+
+    dAlpha = smoothStepsFunc(dSteps).to(device=volume_Valid.device)
+    rendered_Flat = torch.matmul(renderedPoints_dLayers.transpose(1, 2), dAlpha)
+
+    mask_Flat = torch.any(mask_dLayers, dim=1)
+    return rendered_Flat, mask_Flat
+
 def maskValidPoints(requestedPoints, p_center, p_scale):
     toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
     requestedPoints = (requestedPoints - p_center) + toPerlinCenter

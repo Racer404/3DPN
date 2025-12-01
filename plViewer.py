@@ -17,7 +17,6 @@ class PerlinViewer:
         self.perlins = Perlins
         self.points = Points
         self.dSteps = 100
-        self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
 
         self.app = gui.Application.instance
         self.app.initialize()
@@ -57,19 +56,15 @@ class PerlinViewer:
         requestPoints_Volume = self.cam.sampleVolumeBySteps(d_start, d_end, self.dSteps)[0]
         mask_Volume = utils.maskValidPoints(requestPoints_Volume, self.perlins[0].center, self.perlins[0].scale)
 
-        rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in self.perlins])
-        renderedPoints_Valid = rendered_perPerlin[0] * rendered_perPerlin[1]
-        # breakpoint()
+        rendered_perPerlin = torch.stack(
+            [p.getValue(requestPoints_Volume[mask_Volume]) for p in self.perlins]) / 2. + 0.5  # Direct Scale
+        rendered_perPerlin_color = rendered_perPerlin[:, :, 0:self.perlins[0].channelNum - 1]
+        rendered_perPerlin_alpha = rendered_perPerlin[:, :, self.perlins[0].channelNum - 1:self.perlins[0].channelNum]
+        renderedPoints_Valid = (rendered_perPerlin_color * rendered_perPerlin_alpha).mean(dim=0)
 
-        renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], self.perlins[0].channelNum], dtype=torch.float64,
-                                            device="cuda")
-        # renderedPoints_Volume[mask_Volume] = renderedPoints_Valid / 2. + 0.5
-        renderedPoints_Volume[mask_Volume] = renderedPoints_Valid
-        renderedPoints_Volume[~mask_Volume] = 0.5
+        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsMean(renderedPoints_Valid, mask_Volume, self.dSteps)
 
-        renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps, self.perlins[0].channelNum)
-        renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), self.dAlpha)
-        pred_img = renderedPoints.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum)
+        pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum - 1)
 
         showImg = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
         showImg = numpy.clip(showImg, 0., 1.)

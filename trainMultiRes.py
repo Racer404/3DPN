@@ -39,7 +39,6 @@ def train(
 
     frames = []
     totalLoss = []
-    dAlpha = utils.smoothStepsFunc(dSteps).to(device=device)
 
     for iter in range(iterations):
         random.shuffle(cameras)
@@ -56,20 +55,12 @@ def train(
             rendered_perPerlin_alpha = rendered_perPerlin[:,:,perlins[0].channelNum - 1:perlins[0].channelNum]
             renderedPoints_Valid = (rendered_perPerlin_color * rendered_perPerlin_alpha).mean(dim=0)
 
-            renderedPoints_Volume = torch.zeros([requestPoints_Volume.shape[0], perlins[0].channelNum - 1], dtype=torch.float64, device=device)
-            renderedPoints_Volume[mask_Volume] = renderedPoints_Valid
-            renderedPoints_Volume[~mask_Volume] = 0.
+            renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(renderedPoints_Valid, mask_Volume, dSteps)
 
-            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps, perlins[0].channelNum-1)
-            # renderedPoints = renderedPoints_Flat.mean(dim=1)
-            renderedPoints = torch.matmul(renderedPoints_Flat.transpose(1, 2), dAlpha)
-            pred_img = renderedPoints.reshape(cam.width, cam.height, perlins[0].channelNum-1)
-
-            mask_Flat = torch.any(mask_Volume.reshape(cam.width * cam.height, dSteps), dim=1)
+            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, perlins[0].channelNum-1)
             mask_img = mask_Flat.reshape(cam.width, cam.height)
 
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device=device)/255.).transpose(0,1)
-
             pred_img[~mask_img] = gtImage[~mask_img]
             loss = 0.9 * mse_loss(pred_img, gtImage) + 0.1 * (1-ssim_loss(pred_img.unsqueeze(0).permute(0,3,2,1), gtImage.unsqueeze(0).permute(0,3,2,1)))
 
@@ -132,7 +123,7 @@ if __name__ == "__main__":
     # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
     # p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
 
-    loss = train([p3], cams, 10, 0.01, 9, False, True, outputFolder)
+    loss = train([p3], cams, 10, 0.01, 9, True, True, outputFolder)
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)
