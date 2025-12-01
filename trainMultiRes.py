@@ -18,11 +18,13 @@ def train(
         cameras: List[utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
+        dSteps: int = 9,
         ifVisualize: bool = False,
         ifSaveGif: bool = False,
         resultFolder: str = "results",
         device: str = "cuda") -> List[Any]:
 
+    ref_cams = cameras[:]
     os.makedirs(resultFolder, exist_ok=True)
 
     for p in perlins:
@@ -37,7 +39,6 @@ def train(
 
     frames = []
     totalLoss = []
-    dSteps = 100
     dAlpha = utils.smoothStepsFunc(dSteps).to(device=device)
 
     for iter in range(iterations):
@@ -70,7 +71,7 @@ def train(
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device=device)/255.).transpose(0,1)
 
             pred_img[~mask_img] = gtImage[~mask_img]
-            loss = 0.9*mse_loss(pred_img, gtImage) + 0.1*(1-ssim_loss(pred_img.unsqueeze(0).permute(0,3,2,1), gtImage.unsqueeze(0).permute(0,3,2,1)))
+            loss = 0.9 * mse_loss(pred_img, gtImage) + 0.1 * (1-ssim_loss(pred_img.unsqueeze(0).permute(0,3,2,1), gtImage.unsqueeze(0).permute(0,3,2,1)))
 
             optimizer.zero_grad()
             loss.backward()
@@ -87,11 +88,20 @@ def train(
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
-                if ifSaveGif:
-                    frames.append(showImg)
+            if ifSaveGif:
+                if cam is ref_cams[10]:
+                    saveImg = (pred_img.transpose(0, 1).contiguous().cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    frames.append(saveImg)
+
+            if iter is (iterations-1):
+                if cam is ref_cams[10]:
+                    saveImg = (pred_img.transpose(0, 1).contiguous().cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    saveGt = (gtImage.transpose(0,1).cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    cv2.imwrite(f"{resultFolder}/pred.png", cv2.cvtColor(saveImg, cv2.COLOR_RGB2BGR))
+                    cv2.imwrite(f"{resultFolder}/gt.png", cv2.cvtColor(saveGt, cv2.COLOR_RGB2BGR))
 
     if ifSaveGif:
-        gif = [Image.fromarray(frame) for frame in frames]
+        gif = [Image.fromarray(frame, mode="RGB") for frame in frames]
         out_dir = os.path.join(os.getcwd(), "results")
         os.makedirs(out_dir, exist_ok=True)
         gif[0].save(
@@ -111,16 +121,18 @@ def train(
 
 if __name__ == "__main__":
     dataset = "kitchen"
-    sceneCenter = torch.tensor([-0.461083, 1.5, 1.5], dtype=torch.float64, device="cuda")
     cams = utils.readColmapSceneInfo(dataset)
-    trainingSetup = "ds_shuffle_mse0.9_ssim0.1_alphaChannel"
+    optimalZ = utils.getDOIfromCams(cams)
+    sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
+
+    trainingSetup = "test"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
     p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
-    p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
-    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
+    # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
+    # p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
 
-    loss = train([p3,p10,p30], cams, 100, 0.01, True, False, outputFolder)
+    loss = train([p3], cams, 10, 0.01, 9, False, True, outputFolder)
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)
