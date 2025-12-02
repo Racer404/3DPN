@@ -53,9 +53,8 @@ def train(
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins]) / 2. + 0.5 #Direct Scale
             rendered_perPerlin_color = rendered_perPerlin[:,:,0:perlins[0].channelNum - 1]
             rendered_perPerlin_alpha = rendered_perPerlin[:,:,perlins[0].channelNum - 1:perlins[0].channelNum]
-            renderedPoints_Valid = (rendered_perPerlin_color * rendered_perPerlin_alpha).mean(dim=0)
 
-            renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(renderedPoints_Valid, mask_Volume, dSteps)
+            renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsRaypass(rendered_perPerlin_color, rendered_perPerlin_alpha, mask_Volume, dSteps)
 
             pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, perlins[0].channelNum-1)
             mask_img = mask_Flat.reshape(cam.width, cam.height)

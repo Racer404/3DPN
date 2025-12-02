@@ -40,7 +40,8 @@ def smoothStepsFunc(steps):
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
     return alpha
 
-def renderVolume_stepsMean(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+def renderVolume_stepsMean(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
     channels = volume_Valid.shape[1]
     volume = volume_Mask.shape[0]
     renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
@@ -56,7 +57,8 @@ def renderVolume_stepsMean(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor, 
 
     return rendered_Flat, mask_Flat
 
-def renderVolume_stepsDecay(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+def renderVolume_stepsDecay(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
     channels = volume_Valid.shape[1]
     volume = volume_Mask.shape[0]
     renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
@@ -69,6 +71,41 @@ def renderVolume_stepsDecay(volume_Valid:torch.Tensor, volume_Mask:torch.Tensor,
     dAlpha = smoothStepsFunc(dSteps).to(device=volume_Valid.device)
     rendered_Flat = torch.matmul(renderedPoints_dLayers.transpose(1, 2), dAlpha)
 
+    mask_Flat = torch.any(mask_dLayers, dim=1)
+    return rendered_Flat, mask_Flat
+
+def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    color_Valid = color_Valid.mean(dim=0)
+    alpha_Valid = alpha_Valid.mean(dim=0)
+
+    volume = volume_Mask.shape[0]
+    channels = color_Valid.shape[1]
+
+    renderedColor_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Mask.device)
+    renderedColor_Volume[volume_Mask] = color_Valid
+    renderedColor_Volume[~volume_Mask] = 0.
+    renderedColor_dLayers = renderedColor_Volume.reshape(-1, dSteps, channels)
+
+    renderedAlpha_Volume = torch.zeros([volume, 1], dtype=torch.float64, device=volume_Mask.device)
+    renderedAlpha_Volume[volume_Mask] = alpha_Valid
+    renderedAlpha_Volume[~volume_Mask] = 0.
+    renderedAlpha_dLayers = renderedAlpha_Volume.reshape(-1, dSteps, 1)
+
+    delta = 1.
+    alpha_norm = 1.0 - torch.exp(-renderedAlpha_dLayers * delta)
+
+    # Transmittance
+    _alpha = 1.0 - alpha_norm
+    T = torch.cumprod(
+        torch.cat([torch.ones_like(alpha_norm[:, :1]), _alpha[:, :-1]], dim=1),
+        dim=1
+    )  # [N, Z]
+
+    weights = T * alpha_norm # [N, Z, 1]
+    renderedPoints_dLayers = renderedColor_dLayers * weights
+    rendered_Flat = torch.sum(weights * renderedPoints_dLayers, dim=1)
+
+    mask_dLayers = volume_Mask.reshape(-1, dSteps)
     mask_Flat = torch.any(mask_dLayers, dim=1)
     return rendered_Flat, mask_Flat
 
