@@ -18,7 +18,7 @@ def train(
         cameras: List[utils.Camera] = None,
         iterations: int = None,
         lr: float = None,
-        dSteps: int = 9,
+        dSteps: int = None,
         ifVisualize: bool = False,
         ifSaveGif: bool = False,
         resultFolder: str = "results",
