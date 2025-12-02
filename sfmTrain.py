@@ -45,8 +45,8 @@ def train(
     for iter in range(iterations):
         random.shuffle(cams)
         for cam in cameras:
-            p_close = 2.
-            p_far = 4.5
+            p_close = 0.
+            p_far = 9.
             samplePoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
             renderedPoints_Volume = perlin.getValue(samplePoints_Volume, optimizer) / 2. + 0.5
 
@@ -114,7 +114,8 @@ if __name__ == "__main__":
     cams = utils.readColmapSceneInfo(dataset)
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
-    perlin = PerlinNoise3D(res=2, center=sceneCenter, device="cuda")
+
+    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=4, device="cuda")
 
     loss = train(perlin, cams, 5, 0.01, 10, True, True, outputFolder)
 

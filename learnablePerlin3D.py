@@ -140,6 +140,7 @@ class PerlinNoise3D(nn.Module):
     def __init__(self,
                  res:int = None,
                  center = torch.tensor([0.,0.,0.],dtype=torch.float64),
+                 channelNum = None,
                  device:str = None
                  ):
         super().__init__()
@@ -147,13 +148,14 @@ class PerlinNoise3D(nn.Module):
 
         self.res = res
         self.center = center.to(device=device)
+        self.channelNum = channelNum
         self.device = device
-        initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
+        initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3, self.channelNum], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
         self.cornerVecs = nn.Parameter(initial_D)
 
     def writeTensor(self, path):
         writingPath = path
-        torch.save({'res': self.res, 'center': self.center, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
+        torch.save({'res': self.res, 'center': self.center, 'channelNum':self.channelNum, 'device':self.device,'cornerVecs': self.cornerVecs}, writingPath)
         pass
 
     def extendCorners(self, target_idx, optimizer):
@@ -162,7 +164,7 @@ class PerlinNoise3D(nn.Module):
         if needed <= 0:
             return
 
-        new_rows = torch.randn(needed, 3, device=self.cornerVecs.device)
+        new_rows = torch.randn(needed, 3, self.channelNum, device=self.cornerVecs.device)
 
         new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
 
@@ -170,7 +172,6 @@ class PerlinNoise3D(nn.Module):
 
         if optimizer is not None:
             optimizer.param_groups[0]['params'] = [self.cornerVecs]
-
         print(f"Extended parameter to size {target_idx}")
 
     def getValue(self, requestedPoints, opt):
@@ -190,15 +191,16 @@ class PerlinNoise3D(nn.Module):
         offsets = torch.transpose(offsets, 0, 1)
         for i in range(0, reqVec_idx.numel(), chunk):
             idx = reqVec_idx[i:i + chunk]
-            corner_chunk = self.cornerVecs[idx].reshape(-1,8,3).transpose(0,1)
-            off_chunk = offsets[:, i//8:(i + chunk)//8, :]
-            grad_chunk = torch.sum(off_chunk * corner_chunk, dim=-1)
+            corner_chunk = self.cornerVecs[idx].reshape(-1,8,3,self.channelNum).transpose(0,1)
+            off_chunk = offsets[:, i//8:(i + chunk)//8, :].unsqueeze(dim=-1)
+            grad_chunk = torch.sum(off_chunk * corner_chunk, dim=2)
             gradient_out.append(grad_chunk)
 
         gradientVecs = torch.cat(gradient_out, dim=1)
 
         coord_inGrid = getCoorInGrid(self.res, requestedPoints_)
         smthSteps = lerpFunction(coord_inGrid)
+        breakpoint()
         value = trilinearInt(smthSteps, gradientVecs) #Distribution: where X~[-0.6,0.6], Y~[0,1]
 
         return value
