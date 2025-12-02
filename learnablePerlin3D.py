@@ -199,8 +199,7 @@ class PerlinNoise3D(nn.Module):
         gradientVecs = torch.cat(gradient_out, dim=1)
 
         coord_inGrid = getCoorInGrid(self.res, requestedPoints_)
-        smthSteps = lerpFunction(coord_inGrid)
-        breakpoint()
+        smthSteps = lerpFunction(coord_inGrid).unsqueeze(dim=-1)
         value = trilinearInt(smthSteps, gradientVecs) #Distribution: where X~[-0.6,0.6], Y~[0,1]
 
         return value

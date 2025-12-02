@@ -47,15 +47,17 @@ def train(
         for cam in cameras:
             p_close = 0.
             p_far = 9.
-            samplePoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
-            renderedPoints_Volume = perlin.getValue(samplePoints_Volume, optimizer) / 2. + 0.5
+            requestPoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
+            renderedPoints_Volume = perlin.getValue(requestPoints_Volume, optimizer) / 2. + 0.5
+            rendered_color = renderedPoints_Volume[:, :-1]
+            rendered_alpha = renderedPoints_Volume[:, -1]
 
-            renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
-            renderedPoints = renderedPoints_Flat @ dAlpha
+            # renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
+            # renderedPoints = renderedPoints_Flat @ dAlpha
 
+            renderedPoints = utils.renderVolume_stepsRaypass(rendered_color,rendered_alpha,dSteps).squeeze()
             pred_img = renderedPoints.reshape(cam.width, cam.height)
-
-            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device=device)/255.).T
+            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device=device)/255.).transpose(0,1)
 
             loss_ssim = 1 - ssim_loss(pred_img.unsqueeze(0).unsqueeze(0).permute(0,1,3,2), gtImage.unsqueeze(0).unsqueeze(0).permute(0,1,3,2))
             loss_mse = mse_loss(pred_img, gtImage)
@@ -70,21 +72,21 @@ def train(
             if ifVisualize:
                 # renderedPoints[~output_mask] = ? #Background
                 torch.cuda.synchronize()
-                showImg = pred_img.T.cpu().detach().numpy()
-                showGt = gtImage.T.cpu().detach().numpy()
+                showImg = pred_img.transpose(0, 1).cpu().detach().numpy()
+                showGt = gtImage.transpose(0, 1).cpu().detach().numpy()
                 cv2.imshow("Training", showImg)
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
             if ifSaveGif:
                 if cam is ref_cams[10]:
-                    saveImg = (pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    saveImg = (pred_img.transpose(0, 1).cpu().detach().numpy() * 255).astype(numpy.uint8)
                     frames.append(saveImg)
 
             if iter is (iterations-1):
                 if cam is ref_cams[10]:
-                    saveImg = (pred_img.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
-                    saveGt = (gtImage.T.cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    saveImg = (pred_img.transpose(0, 1).cpu().detach().numpy() * 255).astype(numpy.uint8)
+                    saveGt = (gtImage.transpose(0, 1).cpu().detach().numpy() * 255).astype(numpy.uint8)
                     cv2.imwrite(f"{resultFolder}/pred.png", cv2.cvtColor(saveImg, cv2.COLOR_RGB2BGR))
                     cv2.imwrite(f"{resultFolder}/gt.png", cv2.cvtColor(saveGt, cv2.COLOR_RGB2BGR))
 
@@ -115,7 +117,7 @@ if __name__ == "__main__":
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=4, device="cuda")
+    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=2, device="cuda")
 
     loss = train(perlin, cams, 5, 0.01, 10, True, True, outputFolder)
 
