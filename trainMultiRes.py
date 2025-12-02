@@ -115,14 +115,14 @@ if __name__ == "__main__":
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    trainingSetup = "test"
+    trainingSetup = "test_res=30_dSteps=100_rayPass"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
-    p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
+    # p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
     # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
-    # p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
+    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
 
-    loss = train([p3], cams, 10, 0.01, 9, True, True, outputFolder)
+    loss = train([p30], cams, 100, 0.01, 100, True, True, outputFolder)
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
     loss_per_batch = loss_arr.mean(axis=1)

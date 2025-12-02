@@ -102,8 +102,8 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
     )  # [N, Z]
 
     weights = T * alpha_norm # [N, Z, 1]
-    renderedPoints_dLayers = renderedColor_dLayers * weights
-    rendered_Flat = torch.sum(weights * renderedPoints_dLayers, dim=1)
+
+    rendered_Flat = torch.sum(renderedColor_dLayers * weights, dim=1)
 
     mask_dLayers = volume_Mask.reshape(-1, dSteps)
     mask_Flat = torch.any(mask_dLayers, dim=1)
