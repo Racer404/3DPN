@@ -46,7 +46,7 @@ def renderVolume_stepsMean(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, v
     volume = volume_Mask.shape[0]
     renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
     renderedPoints_Volume[volume_Mask] = volume_Valid
-    renderedPoints_Volume[~volume_Mask] = 0.
+    renderedPoints_Volume[~volume_Mask] = 0.5
 
     renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
     mask_dLayers = volume_Mask.reshape(-1, dSteps)
@@ -63,7 +63,7 @@ def renderVolume_stepsDecay(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, 
     volume = volume_Mask.shape[0]
     renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
     renderedPoints_Volume[volume_Mask] = volume_Valid
-    renderedPoints_Volume[~volume_Mask] = 0.
+    renderedPoints_Volume[~volume_Mask] = 0.5
 
     renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
     mask_dLayers = volume_Mask.reshape(-1, dSteps)
@@ -83,21 +83,21 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
 
     renderedColor_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Mask.device)
     renderedColor_Volume[volume_Mask] = color_Valid
-    renderedColor_Volume[~volume_Mask] = 0.
+    renderedColor_Volume[~volume_Mask] = 0.5
     renderedColor_dLayers = renderedColor_Volume.reshape(-1, dSteps, channels)
 
     renderedAlpha_Volume = torch.zeros([volume, 1], dtype=torch.float64, device=volume_Mask.device)
     renderedAlpha_Volume[volume_Mask] = alpha_Valid
-    renderedAlpha_Volume[~volume_Mask] = 0.
+    renderedAlpha_Volume[~volume_Mask] = 0.5
     renderedAlpha_dLayers = renderedAlpha_Volume.reshape(-1, dSteps, 1)
 
-    delta = 1.
+    delta = 0.01
     alpha_norm = 1.0 - torch.exp(-renderedAlpha_dLayers * delta)
 
     # Transmittance
     _alpha = 1.0 - alpha_norm
     T = torch.cumprod(
-        torch.cat([torch.ones_like(alpha_norm[:, :1]), _alpha[:, :-1]], dim=1),
+        torch.cat([torch.ones_like(_alpha[:, :1]), _alpha[:, :-1]], dim=1),
         dim=1
     )  # [N, Z]
 

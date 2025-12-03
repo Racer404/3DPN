@@ -60,9 +60,9 @@ class PerlinViewer:
             [p.getValue(requestPoints_Volume[mask_Volume]) for p in self.perlins]) / 2. + 0.5  # Direct Scale
         rendered_perPerlin_color = rendered_perPerlin[:, :, 0:self.perlins[0].channelNum - 1]
         rendered_perPerlin_alpha = rendered_perPerlin[:, :, self.perlins[0].channelNum - 1:self.perlins[0].channelNum]
-        renderedPoints_Valid = (rendered_perPerlin_color * rendered_perPerlin_alpha).mean(dim=0)
 
-        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsMean(renderedPoints_Valid, mask_Volume, self.dSteps)
+        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(rendered_perPerlin_color,
+                                                                         rendered_perPerlin_alpha, mask_Volume, self.dSteps)
 
         pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum - 1)
 

@@ -34,29 +34,32 @@ def train(
     )
 
     mse_loss = torch.nn.MSELoss()
-    mae_loss = torch.nn.L1Loss()
+    # mae_loss = torch.nn.L1Loss()
     ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1, size_average=True, channel=3)
 
     frames = []
     totalLoss = []
 
+    center_ = perlins[0].center
+    scale_ = perlins[0].scale
+    colorChannels_ = perlins[0].channelNum-1
+
     for iter in range(iterations):
         random.shuffle(cameras)
         for cam in cameras:
-            p_close, p_far = cam.getDepthRange(perlins[0].center, perlins[0].scale)
+            p_close, p_far = cam.getDepthRange(center_, scale_)
             d_start = p_close if p_close > 0. else 0.00001
-            d_end = d_start + perlins[0].scale * 1.73205  # 1.73205 ~ sqrt(3)
+            d_end = d_start + scale_ * 1.73205  # 1.73205 ~ sqrt(3)
 
             requestPoints_Volume = cam.sampleVolumeBySteps(d_start, d_end, dSteps)[0]
-            mask_Volume = utils.maskValidPoints(requestPoints_Volume, perlins[0].center, perlins[0].scale)
+            mask_Volume = utils.maskValidPoints(requestPoints_Volume, center_, scale_)
 
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins]) / 2. + 0.5 #Direct Scale
-            rendered_perPerlin_color = rendered_perPerlin[:,:,0:perlins[0].channelNum - 1]
-            rendered_perPerlin_alpha = rendered_perPerlin[:,:,perlins[0].channelNum - 1:perlins[0].channelNum]
-
+            rendered_perPerlin_color = rendered_perPerlin[:,:,:-1]
+            rendered_perPerlin_alpha = rendered_perPerlin[:,:,-1:]
             renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsRaypass(rendered_perPerlin_color, rendered_perPerlin_alpha, mask_Volume, dSteps)
 
-            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, perlins[0].channelNum-1)
+            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, colorChannels_)
             mask_img = mask_Flat.reshape(cam.width, cam.height)
 
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float64, device=device)/255.).transpose(0,1)
@@ -115,12 +118,12 @@ if __name__ == "__main__":
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    trainingSetup = "test_res=30_dSteps=100_rayPass"
+    trainingSetup = "test_res=60_dSteps=100_rayPass_mse.9+ssim.1_bg=0.5"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
     # p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
     # p10 = PerlinNoise3D(scale=2, res=10, center=sceneCenter, channelNum=4, device="cuda")
-    p30 = PerlinNoise3D(scale=2, res=30, center=sceneCenter, channelNum=4, device="cuda")
+    p30 = PerlinNoise3D(scale=2, res=60, center=sceneCenter, channelNum=4, device="cuda")
 
     loss = train([p30], cams, 100, 0.01, 100, True, True, outputFolder)
     loss_arr = numpy.array(loss)
