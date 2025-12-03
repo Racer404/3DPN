@@ -34,13 +34,12 @@ def train(
     )
 
     mse_loss = torch.nn.MSELoss()
-    mae_loss = torch.nn.L1Loss()
-    bceLogit_loss = torch.nn.BCEWithLogitsLoss()
+    # mae_loss = torch.nn.L1Loss()
+    # bceLogit_loss = torch.nn.BCEWithLogitsLoss()
     ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1., size_average=True, channel=1)
 
     frames = []
     totalLoss = []
-    dAlpha = utils.smoothStepsFunc(dSteps).to(device=device)
 
     for iter in range(iterations):
         random.shuffle(cams)
@@ -52,11 +51,9 @@ def train(
             rendered_color = renderedPoints_Volume[:, :-1]
             rendered_alpha = renderedPoints_Volume[:, -1]
 
-            # renderedPoints_Flat = renderedPoints_Volume.reshape(cam.width * cam.height, dSteps)
-            # renderedPoints = renderedPoints_Flat @ dAlpha
+            renderedPoints_Flat = utils.renderVolume_stepsRaypass(rendered_color,rendered_alpha,dSteps).squeeze()
 
-            renderedPoints = utils.renderVolume_stepsRaypass(rendered_color,rendered_alpha,dSteps).squeeze()
-            pred_img = renderedPoints.reshape(cam.width, cam.height)
+            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height)
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device=device)/255.).transpose(0,1)
 
             loss_ssim = 1 - ssim_loss(pred_img.unsqueeze(0).unsqueeze(0).permute(0,1,3,2), gtImage.unsqueeze(0).unsqueeze(0).permute(0,1,3,2))
@@ -117,7 +114,7 @@ if __name__ == "__main__":
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=2, device="cuda")
+    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=1+1, device="cuda")
 
     loss = train(perlin, cams, 5, 0.01, 10, True, True, outputFolder)
 
