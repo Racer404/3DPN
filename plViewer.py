@@ -1,3 +1,4 @@
+import numpy
 import numpy as np
 import open3d as o3d
 import open3d.visualization.gui as gui
@@ -16,7 +17,7 @@ class PerlinViewer:
         self.cam = Cam
         self.perlin = Perlin
         self.points = Points
-        self.dSteps = 2
+        self.dSteps = 10
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
 
         self.app = gui.Application.instance
@@ -50,19 +51,21 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        p_close = 0.00001
-        p_far = 2.00001
-        samplePoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
-        renderedPoints_Volume = self.perlin.getValue(samplePoints_Volume, None) / 2. + 0.5
+        p_close = 0.
+        p_far = 9.
+        requestPoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
+        renderedPoints_Volume = self.perlin.getValue(requestPoints_Volume, None) / 2. + 0.5
+        rendered_color = renderedPoints_Volume[:, :-1]
+        rendered_alpha = renderedPoints_Volume[:, -1]
 
-        renderedPoints_Flat = renderedPoints_Volume.reshape(self.cam.width * self.cam.height, self.dSteps)
-        renderedPoints = renderedPoints_Flat @ self.dAlpha
+        renderedPoints_Flat = utils.renderVolume_stepsRaypass(rendered_color, rendered_alpha, self.dSteps).squeeze()
 
-        output = renderedPoints.reshape(self.cam.width, self.cam.height)
-        image = output.T.cpu().detach().numpy()
+        pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height)
+        showImg = pred_img.transpose(0, 1).cpu().detach().numpy()
+        showImg = numpy.clip(showImg, 0., 1.)
 
         colormap = plt.get_cmap('viridis')
-        colored_image = colormap(image)
+        colored_image = colormap(showImg)
 
         return (colored_image * 255).astype(np.uint8)
 

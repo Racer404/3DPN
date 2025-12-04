@@ -106,7 +106,7 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    dataset = "kitchen"
+    dataset = "counter"
     trainingSetup = "test_INF"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
@@ -114,9 +114,9 @@ if __name__ == "__main__":
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    perlin = PerlinNoise3D(res=2, center=sceneCenter, channelNum=1+1, device="cuda")
+    perlin = PerlinNoise3D(res=10, center=sceneCenter, channelNum=1+1, device="cuda")
 
-    loss = train(perlin, cams, 5, 0.01, 10, True, True, outputFolder)
+    loss = train(perlin, cams, 100, 0.01, 10, True, True, outputFolder)
 
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
