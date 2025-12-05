@@ -304,43 +304,47 @@ class PerlinNoise3D(nn.Module):
         needed = target_idx - self.cornerVecs.shape[0]
         if needed <= 0:
             return
-
-        new_rows = torch.randn(needed, 3, self.channelNum, device=self.cornerVecs.device)
-
-        new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
-
-        self.cornerVecs = new_param
-
         if optimizer is not None:
+            new_rows = torch.randn(needed, 3, self.channelNum, device=self.cornerVecs.device)
+            new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
+            self.cornerVecs = new_param
             optimizer.param_groups[0]['params'] = [self.cornerVecs]
+        else:
+            new_rows = torch.zeros(needed, 3, self.channelNum, device=self.cornerVecs.device)
+            new_param = nn.Parameter(torch.cat([self.cornerVecs.data, new_rows], dim=0))
+            self.cornerVecs = new_param
         print(f"Extended parameter to size {target_idx}")
 
     def getValue(self, requestedPoints, opt):
         requestedPoints_ = requestedPoints - self.center
+        total_points = requestedPoints.shape[0]
+        chunk = 500_000  # Chunk to control the GPU usage per batch
+        gradient_out = torch.empty((8, total_points, self.channelNum), device=self.device)
 
-        corners, offsets = getCornerByCoor(self.res, requestedPoints_)
-        corners_flat = corners.reshape([-1,3])
-        reqVec_idx = lowmem_exact_spiral_index(corners_flat)
+        for i in range(0, total_points, chunk):
+            _requestedPoints_ = requestedPoints_[i:(i + chunk)]
+            corners, offsets = getCornerByCoor(self.res, _requestedPoints_)
+            corners_flat = corners.reshape([-1, 3])
+            print(f"GPU use after getCornerByCoor:{torch.cuda.memory_allocated() / (1024 ** 3)}")
+            reqVec_idx = lowmem_exact_spiral_index(corners_flat)
+            print(f"GPU use after lowmem_exact_spiral_index:{torch.cuda.memory_allocated() / (1024 ** 3)}")
+            if reqVec_idx.max() >= self.cornerVecs.shape[0]:
+                self.extendCorners(int(reqVec_idx.max().item()), opt)
+            print(f"GPU use after extendCorner:{torch.cuda.memory_allocated() / (1024**3)}")
+            reqVec_idx = reqVec_idx.long()  # <-- fix
+            offsets = torch.transpose(offsets, 0, 1)
 
-        if reqVec_idx.max() >= self.cornerVecs.shape[0]:
-            self.extendCorners(int(reqVec_idx.max().item()), opt)
-
-        chunk = 500_000 * 8 #Chunk to control the GPU usage per batch
-        gradient_out = []
-
-        reqVec_idx = reqVec_idx.long()  # <-- fix
-        offsets = torch.transpose(offsets, 0, 1)
-        for i in range(0, reqVec_idx.numel(), chunk):
-            idx = reqVec_idx[i:i + chunk]
-            corner_chunk = self.cornerVecs[idx].reshape(-1,8,3,self.channelNum).transpose(0,1)
-            off_chunk = offsets[:, i//8:(i + chunk)//8, :].unsqueeze(dim=-1)
+            corner_chunk = self.cornerVecs.index_select(0, reqVec_idx).reshape(-1,8,3,self.channelNum).transpose(0,1)
+            off_chunk = offsets.unsqueeze(dim=-1)
             grad_chunk = torch.sum(off_chunk * corner_chunk, dim=2)
-            gradient_out.append(grad_chunk)
+            gradient_out[:,i:i+chunk] = grad_chunk
+            print(f"GPU use after gradient_out.append:{torch.cuda.memory_allocated() / (1024 ** 3)}")
 
-        gradientVecs = torch.cat(gradient_out, dim=1)
-
+        print(f"GPU use after gradientVecs.cat:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         coord_inGrid = getCoorInGrid(self.res, requestedPoints_)
+        print(f"GPU use after getCoorInGrid:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         smthSteps = lerpFunction(coord_inGrid).unsqueeze(dim=-1)
-        value = trilinearInt(smthSteps, gradientVecs) #Distribution: where X~[-0.6,0.6], Y~[0,1]
-
+        print(f"GPU use after lerpFunction:{torch.cuda.memory_allocated() / (1024 ** 3)}")
+        value = trilinearInt(smthSteps, gradient_out) #Distribution: where X~[-0.6,0.6], Y~[0,1]
+        print(f"GPU use after trilinearInt:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         return value

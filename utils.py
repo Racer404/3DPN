@@ -58,7 +58,7 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
     renderedColor_dLayers = color_Valid.reshape(-1, dSteps, channels)
     renderedAlpha_dLayers = alpha_Valid.reshape(-1, dSteps, 1)
 
-    delta = 1.
+    delta = 1/60
     alpha_norm = 1.0 - torch.exp(-renderedAlpha_dLayers * delta)
 
     # Transmittance

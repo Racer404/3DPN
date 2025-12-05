@@ -17,7 +17,7 @@ class PerlinViewer:
         self.cam = Cam
         self.perlin = Perlin
         self.points = Points
-        self.dSteps = 10
+        self.dSteps = 80
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
 
         self.app = gui.Application.instance
@@ -51,7 +51,7 @@ class PerlinViewer:
         self.window.set_on_layout(on_layout)
 
     def render_perlin(self):
-        p_close = 0.
+        p_close = 0.5
         p_far = 9.
         requestPoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
         renderedPoints_Volume = self.perlin.getValue(requestPoints_Volume, None) / 2. + 0.5
@@ -64,7 +64,7 @@ class PerlinViewer:
         showImg = pred_img.transpose(0, 1).cpu().detach().numpy()
         showImg = numpy.clip(showImg, 0., 1.)
 
-        colormap = plt.get_cmap('viridis')
+        colormap = plt.get_cmap('gray')
         colored_image = colormap(showImg)
 
         return (colored_image * 255).astype(np.uint8)

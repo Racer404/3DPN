@@ -10,6 +10,7 @@ from matplotlib import pyplot as plt
 from pytorch_msssim import SSIM
 from torch import optim
 
+import learnablePerlin3D
 import utils
 from learnablePerlin3D import PerlinNoise3D
 
@@ -33,8 +34,8 @@ def train(
         [perlin.cornerVecs], lr
     )
 
-    mse_loss = torch.nn.MSELoss()
-    # mae_loss = torch.nn.L1Loss()
+    # mse_loss = torch.nn.MSELoss()
+    mae_loss = torch.nn.L1Loss()
     # bceLogit_loss = torch.nn.BCEWithLogitsLoss()
     ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1., size_average=True, channel=1)
 
@@ -44,10 +45,11 @@ def train(
     for iter in range(iterations):
         random.shuffle(cams)
         for cam in cameras:
-            p_close = 0.
+            p_close = 0.5
             p_far = 9.
             requestPoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
             renderedPoints_Volume = perlin.getValue(requestPoints_Volume, optimizer) / 2. + 0.5
+            print(f"GPU use after getValue:{torch.cuda.memory_allocated() / (1024 ** 3)}")
             rendered_color = renderedPoints_Volume[:, :-1]
             rendered_alpha = renderedPoints_Volume[:, -1]
 
@@ -57,8 +59,8 @@ def train(
             gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float64, device=device)/255.).transpose(0,1)
 
             loss_ssim = 1 - ssim_loss(pred_img.unsqueeze(0).unsqueeze(0).permute(0,1,3,2), gtImage.unsqueeze(0).unsqueeze(0).permute(0,1,3,2))
-            loss_mse = mse_loss(pred_img, gtImage)
-            loss = 0.1 * loss_ssim + 0.9 * loss_mse
+            loss_mae = mae_loss(pred_img, gtImage)
+            loss = 0.1 * loss_ssim + 0.9 * loss_mae
 
             optimizer.zero_grad()
             loss.backward()
@@ -107,16 +109,15 @@ def train(
 
 if __name__ == "__main__":
     dataset = "counter"
-    trainingSetup = "test_INF"
+    trainingSetup = "test_INF_res=7_dStep=140_mae_close=0.5"
     outputFolder = f"{dataset}/trained/{trainingSetup}"
 
     cams = utils.readColmapSceneInfo(dataset)
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    perlin = PerlinNoise3D(res=10, center=sceneCenter, channelNum=1+1, device="cuda")
-
-    loss = train(perlin, cams, 100, 0.01, 10, True, True, outputFolder)
+    perlin = PerlinNoise3D(res=7, center=sceneCenter, channelNum=1+1, device="cuda")
+    loss = train(perlin, cams, 100, 0.01, 140, True, True, outputFolder)
 
     loss_arr = numpy.array(loss)
     loss_arr = loss_arr.reshape([-1,len(cams)])
