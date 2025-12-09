@@ -61,10 +61,12 @@ class PerlinViewer:
         rendered_perPerlin_color = rendered_perPerlin[:, :, 0:self.perlins[0].channelNum - 1]
         rendered_perPerlin_alpha = rendered_perPerlin[:, :, self.perlins[0].channelNum - 1:self.perlins[0].channelNum]
 
-        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(rendered_perPerlin_color,
+        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsMeanValid(rendered_perPerlin_color,
                                                                          rendered_perPerlin_alpha, mask_Volume, self.dSteps)
 
         pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum - 1)
+        mask_img = mask_Flat.reshape(self.cam.width, self.cam.height)
+        pred_img[~mask_img] = 0
 
         showImg = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
         showImg = numpy.clip(showImg, 0., 1.)

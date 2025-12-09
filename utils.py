@@ -52,7 +52,21 @@ def renderVolume_stepsMean(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, v
     mask_dLayers = volume_Mask.reshape(-1, dSteps)
 
     rendered_Flat = renderedPoints_dLayers.mean(dim=1)    #Every points on a ray
-    # rendered_Flat = renderedPoints_dLayers.sum(dim=1)/mask_dLayers.sum(dim=1).unsqueeze(-1)     #Only consider valid points on a ray
+    mask_Flat = torch.any(mask_dLayers, dim=1)
+
+    return rendered_Flat, mask_Flat
+
+def renderVolume_stepsMeanValid(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, volume_Mask:torch.Tensor, dSteps: int):
+    volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
+    channels = volume_Valid.shape[1]
+    volume = volume_Mask.shape[0]
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume[volume_Mask] = volume_Valid
+
+    renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
+    mask_dLayers = volume_Mask.reshape(-1, dSteps)
+
+    rendered_Flat = renderedPoints_dLayers.sum(dim=1)/mask_dLayers.sum(dim=1).unsqueeze(-1)     #Only consider valid points on a ray
     mask_Flat = torch.any(mask_dLayers, dim=1)
 
     return rendered_Flat, mask_Flat

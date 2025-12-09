@@ -1,32 +1,61 @@
-def logical_to_linear(x, y, z):
-    """
-    Map a 3D logical coordinate (x,y,z) to a linear index,
-    where index 0 is at (0,0,0) and points expand outward
-    in cubic shells (square spiral in 3D).
-    """
-    # Layer / shell
-    r = max(abs(x), abs(y), abs(z))
+import torch
+from matplotlib import  pyplot as plt
+import learnablePerlin3D
 
-    if r == 0:
-        return 0  # center point
+import utils
 
-    # Number of points in all previous layers
-    base = (2 * r - 1) ** 3  # points in cube of side (2r-1)
+cams = utils.readColmapSceneInfo("kitchen")
+refCam = cams[0]
 
-    # Generate all points in current layer in deterministic order
-    # z-major order: loop z, then y, then x
-    points_in_layer = []
-    for zz in range(-r, r + 1):
-        for yy in range(-r, r + 1):
-            for xx in range(-r, r + 1):
-                if max(abs(xx), abs(yy), abs(zz)) == r:
-                    points_in_layer.append((xx, yy, zz))
+R_ = torch.tensor([[1,0,0],
+                   [0,1,0],
+                   [0,0,1]], device="cuda", dtype=torch.float64)
+t_ = torch.tensor([ 0, 0, 1], device='cuda:0', dtype=torch.float64)
 
-    # Find the index of (x,y,z) in this layer
-    local_index = points_in_layer.index((x, y, z))
+refCam.R = R_
+refCam.t = t_
+refCam.height = 389
+refCam.intrinsic = torch.tensor([[403.9477,   0.0000, 194.6875],
+                                        [0.0000, 403.9477, 194.6875],
+                                        [  0.0000,   0.0000,   1.0000]], device='cuda:0', dtype=torch.float64)
 
-    return base + local_index
+perlin = learnablePerlin3D.PerlinNoise3D(scale=1, res=3, channelNum=1, device="cuda")
+center_ = torch.tensor([0.,0.,0.],dtype=torch.float64, device="cuda")
 
+p_close, p_far = refCam.getDepthRange(center_, 1)
+requestPoints_Volume = refCam.sampleRayFixDepth(1)[0]
 
+volume_out, grad_out = perlin.getValue(requestPoints_Volume)
 
-print(f"index:{logical_to_linear(-2412,1,1)}")
+volume_img = volume_out.reshape(refCam.width,refCam.height)
+
+grad_img = grad_out.reshape(8, refCam.width, refCam.height)
+
+plt.imshow(volume_img.cpu())
+plt.show()
+
+plt.imshow(grad_img[0].cpu())
+plt.show()
+
+plt.imshow(grad_img[1].cpu())
+plt.show()
+
+plt.imshow(grad_img[2].cpu())
+plt.show()
+
+plt.imshow(grad_img[3].cpu())
+plt.show()
+
+plt.imshow(grad_img[4].cpu())
+plt.show()
+
+plt.imshow(grad_img[5].cpu())
+plt.show()
+
+plt.imshow(grad_img[6].cpu())
+plt.show()
+
+plt.imshow(grad_img[7].cpu())
+plt.show()
+
+breakpoint()
