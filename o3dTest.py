@@ -3,16 +3,17 @@ import utils
 from plViewer import PerlinViewer
 
 dataset = "kitchen"
-trainingSetup = "test_res=60_dSteps=100_decay_mse.9+ssim.1"
+trainingSetup = "scale=2_res=3+19+47_dSteps=100_decay_mae.8+ssim.2_bg=0.5_float32"
 perlinFolder = f"{dataset}/trained/{trainingSetup}"
 
 cams = utils.readColmapSceneInfo(dataset)
 points = utils.readColmapPoints(dataset)
 viewerCam = cams[0]
 
-# perlin = learnablePerlin3D.readTensor(f"{perlinFolder}/0.pth")
-perlin = learnablePerlin3D.PerlinNoise3D(scale = 1, res = 3, channelNum=4, device="cuda")
+p3 = learnablePerlin3D.readTensor(f"{perlinFolder}/0.pth")
+p20 = learnablePerlin3D.readTensor(f"{perlinFolder}/1.pth")
+p50 = learnablePerlin3D.readTensor(f"{perlinFolder}/2.pth")
 
-viewer = PerlinViewer(viewerCam, [perlin], points)
+viewer = PerlinViewer(viewerCam, [p3, p20, p50], points)
 viewer.start_loop()
 viewer.app.run()

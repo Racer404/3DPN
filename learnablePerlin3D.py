@@ -59,7 +59,7 @@ class PerlinNoise3D:
     def __init__(self,
                  scale:float = None,
                  res:int = None,
-                 center = torch.tensor([0.,0.,0.],dtype=torch.float64),
+                 center = torch.tensor([0.,0.,0.],dtype=torch.float32),
                  channelNum = 1,
                  device:str = None
                  ):
@@ -71,9 +71,9 @@ class PerlinNoise3D:
         self.tileNumber = res
         self.device = device
         self.tileSize = scale/float(res)
-        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3,self.channelNum], dtype=torch.float64, device=device)-0.5) * 2.
+        self.cornerVecs = (torch.rand([(self.tileNumber+1)**3,3,self.channelNum], dtype=torch.float32, device=device)-0.5) * 2.
         self.cornerVecs.requires_grad = False
-        self.offsets = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=device)
+        self.offsets = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float32, device=device)
         self.corner_Flat = None
 
     def writeTensor(self, path):
@@ -83,7 +83,7 @@ class PerlinNoise3D:
     def getValue(self, requestedPoints):
         self.corner_Flat = indexCornerByTile(self.tileNumber, self.cornerVecs)
 
-        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device=self.device) * self.scale
+        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float32, device=self.device) * self.scale
         validPoints = (requestedPoints - self.center) + toPerlinCenter
 
         coord_inGrid = (validPoints%self.tileSize)/self.tileSize

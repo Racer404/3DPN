@@ -18,23 +18,24 @@ def readColmapSceneInfo(path):
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
     n = len(cam_extrinsics)
-    downsample = 8.
-    images_path = [path + "/images_8/" + cam_extrinsics[i].name for i in range(n)]
+    raw_h = cv2.imread(path + "/images/" + cam_extrinsics[0].name).shape[1]
+    downsample = raw_h / 600.
+    images_path = [path + "/images_600/" + cam_extrinsics[i].name for i in range(n)]
     raw = cv2.imread(images_path[0])
     h,w = raw.shape[0:2]
     intrinsic = torch.tensor(
         [[cam_intrinsics[1].params[0]/downsample,0,cam_intrinsics[1].params[2]/downsample],
          [0,cam_intrinsics[1].params[1]/downsample,cam_intrinsics[1].params[3]/downsample],
-         [0,0,1]]).to(dtype=torch.float64)
-    poses_R = torch.tensor(numpy.array([cam_extrinsics[i].qvec2rotmat() for i in range(n)]))
-    poses_t = torch.tensor(numpy.array([cam_extrinsics[i].tvec for i in range(n)]))
+         [0,0,1]]).to(dtype=torch.float32)
+    poses_R = torch.tensor(numpy.array([cam_extrinsics[i].qvec2rotmat() for i in range(n)])).to(dtype=torch.float32)
+    poses_t = torch.tensor(numpy.array([cam_extrinsics[i].tvec for i in range(n)])).to(dtype=torch.float32)
 
     cameras = [Camera(width=w,height=h,intrinsic=intrinsic,R=poses_R[i],t=poses_t[i],image=images_path[i]) for i in range(n)]
     return cameras
 
 
 def smoothStepsFunc(steps):
-    steps_n = torch.arange(steps, dtype=torch.float64) / steps
+    steps_n = torch.arange(steps, dtype=torch.float32) / steps
     steps_n = torch.cat([steps_n[1:], torch.tensor([1])])
     func = -(steps_n ** 2) + 2 * steps_n  # Looking for a function from [0,1] -> [0,1]
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
@@ -44,7 +45,7 @@ def renderVolume_stepsMean(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, v
     volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
     channels = volume_Valid.shape[1]
     volume = volume_Mask.shape[0]
-    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float32, device=volume_Valid.device)
     renderedPoints_Volume[volume_Mask] = volume_Valid
     renderedPoints_Volume[~volume_Mask] = 0.5
 
@@ -60,7 +61,7 @@ def renderVolume_stepsMeanValid(color_Valid:torch.Tensor, alpha_Valid:torch.Tens
     volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
     channels = volume_Valid.shape[1]
     volume = volume_Mask.shape[0]
-    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float32, device=volume_Valid.device)
     renderedPoints_Volume[volume_Mask] = volume_Valid
 
     renderedPoints_dLayers = renderedPoints_Volume.reshape(-1, dSteps, channels)
@@ -75,7 +76,7 @@ def renderVolume_stepsDecay(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor, 
     volume_Valid = (color_Valid * alpha_Valid).mean(dim=0)
     channels = volume_Valid.shape[1]
     volume = volume_Mask.shape[0]
-    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Valid.device)
+    renderedPoints_Volume = torch.zeros([volume, channels], dtype=torch.float32, device=volume_Valid.device)
     renderedPoints_Volume[volume_Mask] = volume_Valid
     renderedPoints_Volume[~volume_Mask] = 0.5
 
@@ -95,14 +96,14 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
     volume = volume_Mask.shape[0]
     channels = color_Valid.shape[1]
 
-    renderedColor_Volume = torch.zeros([volume, channels], dtype=torch.float64, device=volume_Mask.device)
+    renderedColor_Volume = torch.zeros([volume, channels], dtype=torch.float32, device=volume_Mask.device)
     renderedColor_Volume[volume_Mask] = color_Valid
-    renderedColor_Volume[~volume_Mask] = 0.5
+    renderedColor_Volume[~volume_Mask] = 0.
     renderedColor_dLayers = renderedColor_Volume.reshape(-1, dSteps, channels)
 
-    renderedAlpha_Volume = torch.zeros([volume, 1], dtype=torch.float64, device=volume_Mask.device)
+    renderedAlpha_Volume = torch.zeros([volume, 1], dtype=torch.float32, device=volume_Mask.device)
     renderedAlpha_Volume[volume_Mask] = alpha_Valid
-    renderedAlpha_Volume[~volume_Mask] = 0.5
+    renderedAlpha_Volume[~volume_Mask] = 0.
     renderedAlpha_dLayers = renderedAlpha_Volume.reshape(-1, dSteps, 1)
 
     delta = 0.01
@@ -124,7 +125,7 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
     return rendered_Flat, mask_Flat
 
 def maskValidPoints(requestedPoints, p_center, p_scale):
-    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
+    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float32, device="cuda") * p_scale
     requestedPoints = (requestedPoints - p_center) + toPerlinCenter
 
     mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
@@ -144,15 +145,15 @@ class Camera:
         self.image = image
 
     def Rt2Mat4(self):
-        lastRow = torch.tensor([0,0,0,1], dtype=torch.float64, device=self.device)
+        lastRow = torch.tensor([0,0,0,1], dtype=torch.float32, device=self.device)
         upperPart = torch.concatenate([self.R, self.t.unsqueeze(1)], dim=1)
         mat4_4_Rt = torch.concatenate([upperPart, lastRow.unsqueeze(0)])
         return mat4_4_Rt
 
 
     def getDepthRange(self, center, scale):
-        cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=self.device)
-        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device=self.device)
+        cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float32, device=self.device)
+        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float32, device=self.device)
 
         cornerCoords = scale * (cornerCoords - toPerlinCenter) + center
         cornerCoords_Camera = (self.R @ cornerCoords.T).T + self.t
@@ -163,10 +164,10 @@ class Camera:
     def sampleVolumeBySteps(self, dClose:float, dFar:float, steps: int):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
-        steps_norm = torch.arange(0, 1, 1 / steps, dtype=torch.float64)
+        steps_norm = torch.arange(0, 1, 1 / steps, dtype=torch.float32)
         steps_norm = torch.cat([steps_norm[1:], torch.tensor([1.])]).to(device=self.device)
         steps_depth = steps_norm * (dFar-dClose) + dClose
 
@@ -182,7 +183,7 @@ class Camera:
     def sampleRayRandDepth(self, dClose:float, dFar:float):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
         randomDepth = (torch.rand(coords_inCamera_Flat_Homo.shape[0],device=self.device)*(dFar-dClose)+dClose).unsqueeze(dim=-1)
@@ -197,7 +198,7 @@ class Camera:
     def sampleRayFixDepth(self, dFix:float):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
         randomDepth = dFix

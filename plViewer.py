@@ -61,7 +61,7 @@ class PerlinViewer:
         rendered_perPerlin_color = rendered_perPerlin[:, :, 0:self.perlins[0].channelNum - 1]
         rendered_perPerlin_alpha = rendered_perPerlin[:, :, self.perlins[0].channelNum - 1:self.perlins[0].channelNum]
 
-        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsMeanValid(rendered_perPerlin_color,
+        renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(rendered_perPerlin_color,
                                                                          rendered_perPerlin_alpha, mask_Volume, self.dSteps)
 
         pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height, self.perlins[0].channelNum - 1)
@@ -95,7 +95,7 @@ class PerlinViewer:
 
     def on_loop(self):
         # Get camera transform
-        extrinsic = np.array(self.scene_box.scene.camera.get_view_matrix(), dtype=np.float64)
+        extrinsic = np.array(self.scene_box.scene.camera.get_view_matrix(), dtype=np.float32)
         ToGLCamera = np.array([
             [1, 0, 0, 0],
             [0, -1, 0, 0],
@@ -103,8 +103,8 @@ class PerlinViewer:
             [0, 0, 0, 1]
         ])
         extrinsic = ToGLCamera @ extrinsic
-        self.cam.R = torch.tensor(extrinsic[:3, :3], device="cuda", dtype=torch.float64)
-        self.cam.t = torch.tensor(extrinsic[:3, 3], device="cuda", dtype=torch.float64)
+        self.cam.R = torch.tensor(extrinsic[:3, :3], device="cuda", dtype=torch.float32)
+        self.cam.t = torch.tensor(extrinsic[:3, 3], device="cuda", dtype=torch.float32)
 
         # Render both images　        # Safe, direct update (no thread issues)
         img_perlin = self.render_perlin()
