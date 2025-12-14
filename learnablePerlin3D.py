@@ -280,7 +280,7 @@ def readTensor(path):
 class PerlinNoise3D(nn.Module):
     def __init__(self,
                  res:int = None,
-                 center = torch.tensor([0.,0.,0.],dtype=torch.float64),
+                 center = torch.tensor([0.,0.,0.],dtype=torch.float32),
                  channelNum = None,
                  device:str = None
                  ):
@@ -291,7 +291,7 @@ class PerlinNoise3D(nn.Module):
         self.center = center.to(device=device)
         self.channelNum = channelNum
         self.device = device
-        initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3, self.channelNum], dtype=torch.float64, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
+        initial_D = (torch.rand([(2 * self.res + 1) ** 3, 3, self.channelNum], dtype=torch.float32, device=device) - 0.5) * 2.   #[-1, 1], offset vector also [-1, 1]
         self.cornerVecs = nn.Parameter(initial_D)
 
     def writeTensor(self, path):
@@ -325,12 +325,9 @@ class PerlinNoise3D(nn.Module):
             _requestedPoints_ = requestedPoints_[i:(i + chunk)]
             corners, offsets = getCornerByCoor(self.res, _requestedPoints_)
             corners_flat = corners.reshape([-1, 3])
-            print(f"GPU use after getCornerByCoor:{torch.cuda.memory_allocated() / (1024 ** 3)}")
             reqVec_idx = lowmem_exact_spiral_index(corners_flat)
-            print(f"GPU use after lowmem_exact_spiral_index:{torch.cuda.memory_allocated() / (1024 ** 3)}")
             if reqVec_idx.max() >= self.cornerVecs.shape[0]:
                 self.extendCorners(int(reqVec_idx.max().item()), opt)
-            print(f"GPU use after extendCorner:{torch.cuda.memory_allocated() / (1024**3)}")
             reqVec_idx = reqVec_idx.long()  # <-- fix
             offsets = torch.transpose(offsets, 0, 1)
 
@@ -338,13 +335,8 @@ class PerlinNoise3D(nn.Module):
             off_chunk = offsets.unsqueeze(dim=-1)
             grad_chunk = torch.sum(off_chunk * corner_chunk, dim=2)
             gradient_out[:,i:i+chunk] = grad_chunk
-            print(f"GPU use after gradient_out.append:{torch.cuda.memory_allocated() / (1024 ** 3)}")
 
-        print(f"GPU use after gradientVecs.cat:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         coord_inGrid = getCoorInGrid(self.res, requestedPoints_)
-        print(f"GPU use after getCoorInGrid:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         smthSteps = lerpFunction(coord_inGrid).unsqueeze(dim=-1)
-        print(f"GPU use after lerpFunction:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         value = trilinearInt(smthSteps, gradient_out) #Distribution: where X~[-0.6,0.6], Y~[0,1]
-        print(f"GPU use after trilinearInt:{torch.cuda.memory_allocated() / (1024 ** 3)}")
         return value

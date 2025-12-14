@@ -91,7 +91,7 @@ class PerlinViewer:
 
     def on_loop(self):
         # Get camera transform
-        extrinsic = np.array(self.scene_box.scene.camera.get_view_matrix(), dtype=np.float64)
+        extrinsic = np.array(self.scene_box.scene.camera.get_view_matrix(), dtype=np.float32)
         ToGLCamera = np.array([
             [1, 0, 0, 0],
             [0, -1, 0, 0],
@@ -99,8 +99,8 @@ class PerlinViewer:
             [0, 0, 0, 1]
         ])
         extrinsic = ToGLCamera @ extrinsic
-        self.cam.R = torch.tensor(extrinsic[:3, :3], device="cuda", dtype=torch.float64)
-        self.cam.t = torch.tensor(extrinsic[:3, 3], device="cuda", dtype=torch.float64)
+        self.cam.R = torch.tensor(extrinsic[:3, :3], device="cuda", dtype=torch.float32)
+        self.cam.t = torch.tensor(extrinsic[:3, 3], device="cuda", dtype=torch.float32)
 
         # Render both images　        # Safe, direct update (no thread issues)
         img_perlin = self.render_perlin()

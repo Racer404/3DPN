@@ -18,23 +18,24 @@ def readColmapSceneInfo(path):
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
     n = len(cam_extrinsics)
-    downsample = 8.
-    images_path = [path + "/images_8/" + cam_extrinsics[i].name for i in range(n)]
+    raw_h = cv2.imread(path + "/images/" + cam_extrinsics[0].name).shape[1]
+    downsample = raw_h/400.
+    images_path = [path + "/images_400/" + cam_extrinsics[i].name for i in range(n)]
     raw = cv2.imread(images_path[0])
     h,w = raw.shape[0:2]
     intrinsic = torch.tensor(
         [[cam_intrinsics[1].params[0]/downsample,0,cam_intrinsics[1].params[2]/downsample],
          [0,cam_intrinsics[1].params[1]/downsample,cam_intrinsics[1].params[3]/downsample],
-         [0,0,1]]).to(dtype=torch.float64)
-    poses_R = torch.tensor(numpy.array([cam_extrinsics[i].qvec2rotmat() for i in range(n)]))
-    poses_t = torch.tensor(numpy.array([cam_extrinsics[i].tvec for i in range(n)]))
+         [0,0,1]]).to(dtype=torch.float32)
+    poses_R = torch.tensor(numpy.array([cam_extrinsics[i].qvec2rotmat() for i in range(n)])).to(dtype=torch.float32)
+    poses_t = torch.tensor(numpy.array([cam_extrinsics[i].tvec for i in range(n)])).to(dtype=torch.float32)
 
     cameras = [Camera(width=w,height=h,intrinsic=intrinsic,R=poses_R[i],t=poses_t[i],image=images_path[i]) for i in range(n)]
     return cameras
 
 
 def smoothStepsFunc(steps):
-    steps_n = torch.arange(steps, dtype=torch.float64) / steps
+    steps_n = torch.arange(steps, dtype=torch.float32) / steps
     steps_n = torch.cat([steps_n[1:], torch.tensor([1])])
     func = -(steps_n ** 2) + 2 * steps_n  # Looking for a function from [0,1] -> [0,1]
     alpha = func - torch.cat([torch.tensor([0]), func[:-1]])
@@ -44,7 +45,7 @@ def sigmoid_ix(x, i):
     return 1 / (1 + torch.exp(-i * x))
 
 def maskValidPoints(requestedPoints, p_center, p_scale):
-    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device="cuda") * p_scale
+    toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float32, device="cuda") * p_scale
     requestedPoints = (requestedPoints - p_center) + toPerlinCenter
 
     mask = (requestedPoints >= 0) & (requestedPoints < p_scale)
@@ -58,7 +59,7 @@ def renderVolume_stepsRaypass(color_Valid:torch.Tensor, alpha_Valid:torch.Tensor
     renderedColor_dLayers = color_Valid.reshape(-1, dSteps, channels)
     renderedAlpha_dLayers = alpha_Valid.reshape(-1, dSteps, 1)
 
-    delta = 1/60
+    delta = 1/dSteps
     alpha_norm = 1.0 - torch.exp(-renderedAlpha_dLayers * delta)
 
     # Transmittance
@@ -84,15 +85,15 @@ class Camera:
         self.image = image
 
     def Rt2Mat4(self):
-        lastRow = torch.tensor([0,0,0,1], dtype=torch.float64, device=self.device)
+        lastRow = torch.tensor([0,0,0,1], dtype=torch.float32, device=self.device)
         upperPart = torch.concatenate([self.R, self.t.unsqueeze(1)], dim=1)
         mat4_4_Rt = torch.concatenate([upperPart, lastRow.unsqueeze(0)])
         return mat4_4_Rt
 
 
     def getDepthRange(self, center, scale):
-        cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float64, device=self.device)
-        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float64, device=self.device)
+        cornerCoords = torch.tensor([[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]], dtype=torch.float32, device=self.device)
+        toPerlinCenter = torch.tensor([0.5, 0.5, 0.5]).to(dtype=torch.float32, device=self.device)
 
         cornerCoords = scale * (cornerCoords - toPerlinCenter) + center
         cornerCoords_Camera = (self.R @ cornerCoords.T).T + self.t
@@ -103,10 +104,10 @@ class Camera:
     def sampleVolumeBySteps(self, dClose:float, dFar:float, steps: int):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
-        steps_norm = torch.arange(0, 1, 1 / steps, dtype=torch.float64)
+        steps_norm = torch.arange(0, 1, 1 / steps, dtype=torch.float32)
         steps_norm = torch.cat([steps_norm[1:], torch.tensor([1.])]).to(device=self.device)
         steps_depth = steps_norm * (dFar-dClose) + dClose
 
@@ -122,7 +123,7 @@ class Camera:
     def sampleRayRandDepth(self, dClose:float, dFar:float):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
         randomDepth = (torch.rand(coords_inCamera_Flat_Homo.shape[0],device=self.device)*(dFar-dClose)+dClose).unsqueeze(dim=-1)
@@ -137,7 +138,7 @@ class Camera:
     def sampleRayFixDepth(self, dFix:float):
         coords_inImage = torch.stack(torch.meshgrid([torch.arange(0,self.width),torch.arange(0,self.height)],indexing='ij'),dim=-1)
         coords_inImage_Flat = coords_inImage.reshape([-1,2])
-        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float64,device=self.device)
+        coords_inImage_Flat_Homo = torch.hstack([coords_inImage_Flat,torch.ones(coords_inImage_Flat.shape[0]).unsqueeze(dim=-1)]).to(dtype=torch.float32,device=self.device)
         coords_inCamera_Flat_Homo = (torch.linalg.inv(self.intrinsic)@coords_inImage_Flat_Homo.T).T
 
         randomDepth = dFix
