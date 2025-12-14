@@ -12,11 +12,11 @@ from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlins:List[PerlinNoise3D], Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlins:List[PerlinNoise3D], Points:utils.Point3D, dSteps: int = None):
         self.cam = Cam
         self.perlins = Perlins
         self.points = Points
-        self.dSteps = 100
+        self.dSteps = dSteps
 
         self.app = gui.Application.instance
         self.app.initialize()

@@ -19,8 +19,8 @@ def readColmapSceneInfo(path):
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
     n = len(cam_extrinsics)
     raw_h = cv2.imread(path + "/images/" + cam_extrinsics[0].name).shape[1]
-    downsample = raw_h / 600.
-    images_path = [path + "/images_600/" + cam_extrinsics[i].name for i in range(n)]
+    downsample = raw_h / 400.
+    images_path = [path + "/images_400/" + cam_extrinsics[i].name for i in range(n)]
     raw = cv2.imread(images_path[0])
     h,w = raw.shape[0:2]
     intrinsic = torch.tensor(

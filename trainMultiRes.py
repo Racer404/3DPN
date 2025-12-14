@@ -5,7 +5,6 @@ from typing import List, Any
 import cv2
 import numpy
 import torch
-from PIL import Image
 from pytorch_msssim import SSIM
 from torch import optim
 
@@ -37,12 +36,15 @@ def train(
     mae_loss = torch.nn.L1Loss()
     ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1, size_average=True, channel=3)
 
-    frames = []
     totalLoss = []
 
     center_ = perlins[0].center
     scale_ = perlins[0].scale
     colorChannels_ = perlins[0].channelNum-1
+
+    if ifSaveGif:
+        for i in range(iterations):
+            os.makedirs(f"{resultFolder}/iters/{i}", exist_ok=True)
 
     for iter in range(iterations):
         random.shuffle(cameras)
@@ -73,71 +75,84 @@ def train(
             totalLoss.append(loss.item())
 
             if ifVisualize:
-                # renderedPoints[~output_mask] = ? #Background
+                # pred_img[~mask_img] = ? #Background
                 torch.cuda.synchronize()
-                showImg = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+                pred_numpy = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+                pred_numpy = numpy.clip(pred_numpy, 0., 1.)
                 showGt = gtImage.transpose(0,1).cpu().detach().numpy()
-                cv2.imshow("Training", showImg)
+                cv2.imshow("Training", pred_numpy)
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
             if ifSaveGif:
-                if cam is ref_cams[10]:
-                    saveImg = (pred_img.transpose(0, 1).contiguous().cpu().detach().numpy() * 255).astype(numpy.uint8)
-                    frames.append(saveImg)
-
-            if iter is (iterations-1):
-                if cam is ref_cams[10]:
-                    saveImg = (pred_img.transpose(0, 1).contiguous().cpu().detach().numpy() * 255).astype(numpy.uint8)
-                    saveGt = (gtImage.transpose(0,1).cpu().detach().numpy() * 255).astype(numpy.uint8)
-                    cv2.imwrite(f"{resultFolder}/pred.png", cv2.cvtColor(saveImg, cv2.COLOR_RGB2BGR))
-                    cv2.imwrite(f"{resultFolder}/gt.png", cv2.cvtColor(saveGt, cv2.COLOR_RGB2BGR))
-
-    if ifSaveGif:
-        gif = [Image.fromarray(frame, mode="RGB") for frame in frames]
-        out_dir = os.path.join(os.getcwd(), "results")
-        os.makedirs(out_dir, exist_ok=True)
-        gif[0].save(
-            f"{resultFolder}/training.gif",
-            save_all=True,
-            append_images=gif[1:],
-            optimize=False,
-            duration=1,
-            loop=0,
-        )
+                pred_img[~mask_img] = 0. #Background
+                pred_numpy = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+                pred_numpy = numpy.clip(pred_numpy, 0., 1.)
+                pred_numpy = (pred_numpy * 255).astype(numpy.uint8)
+                cv2.imwrite(f"{resultFolder}/iters/{iter}/{os.path.basename(cam.image)}", cv2.cvtColor(pred_numpy, cv2.COLOR_RGB2BGR))
 
     for idx,p in enumerate(perlins):
         p.cornerVecs.requires_grad_(False)
-        p.writeTensor(f"{resultFolder}/{str(idx)}.pth")
+        os.makedirs(f"{resultFolder}/weights", exist_ok=True)
+        p.writeTensor(f"{resultFolder}/weights/{str(idx)}.pth")
 
     return totalLoss
 
 if __name__ == "__main__":
-    dataset = "kitchen"
-    cams = utils.readColmapSceneInfo(dataset)
-    optimalZ = utils.getDOIfromCams(cams)
-    sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
-    trainingSetup = "scale=2_res=3+19+47_dSteps=100_decay_mae.8+ssim.2_bg=0.5_float32"
-    outputFolder = f"{dataset}/trained/{trainingSetup}"
+    datasets = ["bonsai","counter","garden","lion","table","stump","bicycle","room"]
+    targetRes = [[64,16,4],[64,19,3],[64,32,16],[64,63,62]]
 
-    p3 = PerlinNoise3D(scale=2, res=3, center=sceneCenter, channelNum=4, device="cuda")
-    p19 = PerlinNoise3D(scale=2, res=19, center=sceneCenter, channelNum=4, device="cuda")
-    p47 = PerlinNoise3D(scale=2, res=47, center=sceneCenter, channelNum=4, device="cuda")
+    for res in targetRes:
+        breakpoint()
+        for dataset in datasets:
+            cams = utils.readColmapSceneInfo(dataset)
+            optimalZ = utils.getDOIfromCams(cams)
+            sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
+            trainingSetup = f"scale=2_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
+            outputFolder = f"{dataset}/trained/{trainingSetup}"
+            perlin1 = PerlinNoise3D(scale=2, res=res[0], center=sceneCenter, channelNum=4, device="cuda")
+            perlin2 = PerlinNoise3D(scale=2, res=res[1], center=sceneCenter, channelNum=4, device="cuda")
+            perlin3 = PerlinNoise3D(scale=2, res=res[2], center=sceneCenter, channelNum=4, device="cuda")
+            loss = train([perlin1,perlin2,perlin3], cams, 100, 0.01, 2 * res[0], False, True, outputFolder)
 
-    loss = train([p3, p19, p47], cams, 100, 0.01, 100, False, True, outputFolder)
-    loss_arr = numpy.array(loss)
-    loss_arr = loss_arr.reshape([-1,len(cams)])
-    loss_per_batch = loss_arr.mean(axis=1)
-    torch.cuda.synchronize()
-    ## END OF TRAINING
+            loss_arr = numpy.array(loss)
+            loss_arr = loss_arr.reshape([-1,len(cams)])
+            loss_per_batch = loss_arr.mean(axis=1)
+            torch.cuda.synchronize()
+            ## END OF TRAINING
 
-    # === Save histograms and plots ===
-    def save_plot(fig_name):
-        """Helper function to save current matplotlib figure."""
-        plt.savefig(os.path.join(outputFolder, fig_name))
-        plt.close()
-
-    plt.figure()
-    plt.plot(loss_per_batch)
-    plt.annotate(str(loss_per_batch[-1]), xy=(len(loss_per_batch) - 1, loss_per_batch[-1]))
-    save_plot("loss_batch.png")
+            plt.figure()
+            plt.plot(loss_per_batch)
+            plt.annotate(str(loss_per_batch[-1]), xy=(len(loss_per_batch) - 1, loss_per_batch[-1]))
+            plt.savefig(f"{outputFolder}/loss_batch.png")
+            plt.close()
+            numpy.savetxt(f"{outputFolder}/loss.txt", loss_arr)
+            numpy.savetxt(f"{outputFolder}/loss_batch.txt", loss_per_batch)
+    # datasets = ["bonsai","counter","garden","lion","table","stump","bicycle","room"]
+    # targetRes = [[100,20,5],[100,50,5],[128,32,8],[128,64,32]]
+    #
+    # for dataset in datasets:
+    #     cams = utils.readColmapSceneInfo(dataset)
+    #     optimalZ = utils.getDOIfromCams(cams)
+    #     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
+    #     for res in targetRes:
+    #         trainingSetup = f"scale=2_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
+    #         outputFolder = f"{dataset}/trained/{trainingSetup}"
+    #         perlin1 = PerlinNoise3D(scale=2, res=res[0], center=sceneCenter, channelNum=4, device="cuda")
+    #         perlin2 = PerlinNoise3D(scale=2, res=res[1], center=sceneCenter, channelNum=4, device="cuda")
+    #         perlin3 = PerlinNoise3D(scale=2, res=res[2], center=sceneCenter, channelNum=4, device="cuda")
+    #         loss = train([perlin1,perlin2,perlin3], cams, 100, 0.01, 2 * res[0], False, True, outputFolder)
+    #
+    #         loss_arr = numpy.array(loss)
+    #         loss_arr = loss_arr.reshape([-1,len(cams)])
+    #         loss_per_batch = loss_arr.mean(axis=1)
+    #         torch.cuda.synchronize()
+    #         ## END OF TRAINING
+    #
+    #         plt.figure()
+    #         plt.plot(loss_per_batch)
+    #         plt.annotate(str(loss_per_batch[-1]), xy=(len(loss_per_batch) - 1, loss_per_batch[-1]))
+    #         plt.savefig(f"{outputFolder}/loss_batch.png")
+    #         plt.close()
+    #         numpy.savetxt(f"{outputFolder}/loss.txt", loss_arr)
+    #         numpy.savetxt(f"{outputFolder}/loss_batch.txt", loss_per_batch)
