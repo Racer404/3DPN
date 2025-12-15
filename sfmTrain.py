@@ -1,5 +1,6 @@
 import os
 import random
+import time
 from typing import List, Any
 
 import cv2
@@ -7,6 +8,7 @@ import numpy
 import torch
 from pytorch_msssim import SSIM
 from torch import optim
+from tqdm import tqdm
 
 import utils
 from learnablePerlin3D import PerlinNoise3D
@@ -48,7 +50,7 @@ def train(
 
     for iter in range(iterations):
         random.shuffle(cameras)
-        for cam in cameras:
+        for cam in tqdm(cameras):
             p_close, p_far = cam.getDepthRange(center_, scale_)
             d_start = p_close if p_close > 0. else 0.00001
             d_end = d_start + scale_ * 1.73205  # 1.73205 ~ sqrt(3)
@@ -99,18 +101,18 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    dataset = "bonsai"
+    dataset = "kitchen"
     cams = utils.readColmapSceneInfo(dataset)
     optimalZ = utils.getDOIfromCams(cams)
     sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
 
-    targetRes = {59}
+    targetRes = {16}
 
     for res in targetRes:
         trainingSetup = f"scale=2_res={res}_dSteps={2 * res}_decay_bg=0.5_mae.8+ssim.2"
         outputFolder = f"{dataset}/trained/{trainingSetup}"
         perlin = PerlinNoise3D(scale=2, res=res, center=sceneCenter, channelNum=4, device="cuda")
-        loss = train([perlin], cams, 100, 0.01, 2 * res, True, False, outputFolder)
+        loss = train([perlin], cams, 100, 0.01, 2 * res, False, False, outputFolder)
 
         loss_arr = numpy.array(loss)
         loss_arr = loss_arr.reshape([-1,len(cams)])

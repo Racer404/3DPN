@@ -294,8 +294,9 @@ def getPOIfromCamsZ(cameras: List[Camera], Z):
     p = R3 * Z + t_wc              # (N,3)
     p_mean = p.mean(dim=0)
     p_var = ((p - p_mean) ** 2).sum() / len(cameras)
+    p_std = p_var ** 0.5
 
-    return p_mean, p_var
+    return p_mean, p_std
 
 # def triangulate_unconstrained(cameras: List, eps: float = 1e-12) -> Tuple[torch.Tensor, dict]:
 #     device = cameras[0].R.device
