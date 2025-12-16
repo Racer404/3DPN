@@ -13,13 +13,13 @@ from learnablePerlin3D import PerlinNoise3D
 
 
 class PerlinViewer:
-    def __init__(self, Cam:utils.Camera, Perlin: PerlinNoise3D, Points:utils.Point3D):
+    def __init__(self, Cam:utils.Camera, Perlin: PerlinNoise3D, optimalZ: float, dSteps: int, Points:utils.Point3D):
         self.cam = Cam
         self.perlin = Perlin
         self.points = Points
-        self.dSteps = 80
+        self.dSteps = dSteps
         self.dAlpha = utils.smoothStepsFunc(self.dSteps).to(device=self.cam.device)
-
+        self.optimalZ = optimalZ
         self.app = gui.Application.instance
         self.app.initialize()
         self.window = self.app.create_window("Custom Camera Renderer", self.cam.width * 3, self.cam.height)
@@ -52,7 +52,7 @@ class PerlinViewer:
 
     def render_perlin(self):
         p_close = 0.5
-        p_far = 9.
+        p_far = self.optimalZ * 2
         requestPoints_Volume = self.cam.sampleVolumeBySteps(p_close, p_far, self.dSteps)[0]
         renderedPoints_Volume = self.perlin.getValue(requestPoints_Volume, None) / 2. + 0.5
         rendered_color = renderedPoints_Volume[:, :-1]
@@ -60,14 +60,12 @@ class PerlinViewer:
 
         renderedPoints_Flat = utils.renderVolume_stepsRaypass(rendered_color, rendered_alpha, self.dSteps).squeeze()
 
-        pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height)
-        showImg = pred_img.transpose(0, 1).cpu().detach().numpy()
-        showImg = numpy.clip(showImg, 0., 1.)
+        pred_img = renderedPoints_Flat.reshape(self.cam.width, self.cam.height, 3)
 
-        colormap = plt.get_cmap('gray')
-        colored_image = colormap(showImg)
+        pred_numpy = pred_img.transpose(0, 1).contiguous().cpu().detach().numpy()
+        pred_numpy = numpy.clip(pred_numpy, 0., 1.)
 
-        return (colored_image * 255).astype(np.uint8)
+        return (pred_numpy * 255).astype(np.uint8)
 
     def render_pointCloud(self):
         image = torch.zeros([self.cam.height, self.cam.width, 3], dtype=torch.uint8, device="cuda")

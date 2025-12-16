@@ -158,8 +158,8 @@ def readColmapPoints(path):
         pointsFile = os.path.join(path, "sparse/0", "points3D.txt")
         points = read_points3D_text(pointsFile)
 
-    xyzs = torch.tensor(points[0])
-    rgbs = torch.tensor(points[1])
+    xyzs = torch.tensor(points[0]).to(dtype=torch.float32)
+    rgbs = torch.tensor(points[1]).to(dtype=torch.float32)
     errors = torch.tensor(points[2])
     points3d = Point3D(xyzs, rgbs, errors)
 

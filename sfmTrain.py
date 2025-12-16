@@ -35,7 +35,7 @@ def train(
 
     # mse_loss = torch.nn.MSELoss()
     mae_loss = torch.nn.L1Loss()
-    ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1., size_average=True, channel=1)
+    ssim_loss = SSIM(win_size=11, win_sigma=1.5, data_range=1., size_average=True, channel=3)
 
     totalLoss = []
 
@@ -49,6 +49,7 @@ def train(
     reminderCamNum = math.floor(len(cameras)*(epochs-epochs_full))
     for epoch in range(epochs_full+1):
         random.shuffle(cameras)
+
         if epoch == epochs_full:
             cameras = cameras[:reminderCamNum]
 
@@ -64,10 +65,10 @@ def train(
 
             renderedPoints_Flat = utils.renderVolume_stepsRaypass(rendered_color,rendered_alpha,dSteps).squeeze()
 
-            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height)
-            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_GRAYSCALE), dtype=torch.float32, device=device)/255.).transpose(0,1)
+            pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, 3)
+            gtImage = (torch.tensor(cv2.imread(cam.image,cv2.IMREAD_COLOR_RGB), dtype=torch.float32, device=device)/255.).transpose(0,1)
 
-            loss_ssim = 1 - ssim_loss(pred_img.unsqueeze(0).unsqueeze(0).permute(0,1,3,2), gtImage.unsqueeze(0).unsqueeze(0).permute(0,1,3,2))
+            loss_ssim = 1 - ssim_loss(pred_img.unsqueeze(0).permute(0,3,2,1), gtImage.unsqueeze(0).permute(0,3,2,1))
             loss_mae = mae_loss(pred_img, gtImage)
             loss = 0.2 * loss_ssim + 0.8 * loss_mae
 
@@ -91,7 +92,7 @@ def train(
                 pred_numpy = pred_img.transpose(0, 1).cpu().detach().numpy()
                 pred_numpy = numpy.clip(pred_numpy, 0., 1.)
                 pred_numpy = (pred_numpy * 255).astype(numpy.uint8)
-                cv2.imwrite(f"{resultFolder}/epochs/{epoch}/{os.path.basename(cam.image)}", pred_numpy)
+                cv2.imwrite(f"{resultFolder}/epochs/{epoch}/{os.path.basename(cam.image)}", cv2.cvtColor(pred_numpy, cv2.COLOR_RGB2BGR))
         totalLoss.append(loss_epoch)
 
     perlin.cornerVecs.requires_grad_(False)
@@ -101,8 +102,8 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    datasets = ["kitchen"]
-    targetRes = [7]
+    datasets = ["treehill"]
+    targetRes = [9]
 
     for res in targetRes:
         for dataset in datasets:
@@ -114,7 +115,7 @@ if __name__ == "__main__":
             trainingSetup = f"INF_res={res}_dStep={nyquist_freq}_raypass_mae.8+ssim.2"
             outputFolder = f"{dataset}/trained/{trainingSetup}"
 
-            perlin = PerlinNoise3D(res=res, center=sceneCenter, channelNum=1+1, device="cuda")
+            perlin = PerlinNoise3D(res=res, center=sceneCenter, channelNum=3+1, device="cuda")
             loss = train(perlin, cams, 20_000, 0.01, optimalZ, nyquist_freq, False, True, outputFolder)
             torch.cuda.synchronize()
             ## END OF TRAINING
