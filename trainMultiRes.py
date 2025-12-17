@@ -24,6 +24,7 @@ def train(
         resultFolder: str = "results",
         device: str = "cuda") -> List[Any]:
 
+    cameras = [cameras[0],cameras[6],cameras[9]]
     os.makedirs(resultFolder, exist_ok=True)
 
     for p in perlins:
@@ -42,7 +43,7 @@ def train(
     scale_ = perlins[0].scale
     colorChannels_ = perlins[0].channelNum-1
 
-    epochs = iterations/len(cams)
+    epochs = iterations/len(cameras)
     epochs_full = math.floor(epochs)
 
     if ifSaveGif:
@@ -109,7 +110,7 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    datasets = ["plant","vintage"]
+    datasets = ["vintage"]
     targetRes = [[64,16,4]]
 
     for res in targetRes:
@@ -119,7 +120,7 @@ if __name__ == "__main__":
             sceneCenter, centerStd = utils.getPOIfromCamsZ(cams, optimalZ)
             scale_multiplier = 6
             print(f"scene centerStd:{centerStd}")
-            trainingSetup = f"scale={scale_multiplier}_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
+            trainingSetup = f"TEST_scale={scale_multiplier}_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
             outputFolder = f"{dataset}/trained/{trainingSetup}"
             perlin1 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[0], center=sceneCenter, channelNum=4, device="cuda")
             perlin2 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[1], center=sceneCenter, channelNum=4, device="cuda")

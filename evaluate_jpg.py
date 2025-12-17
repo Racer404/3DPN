@@ -1,5 +1,6 @@
 import os
 import torch
+
 import lpips
 import numpy as np
 from PIL import Image
@@ -37,6 +38,46 @@ def lpips_torch_alex(pred, gt):
 
     return val.item()
 
+
+def ssim_torch(pred, gt, window_size=11, sigma=1.5, eps=1e-8):
+    """
+    pred, gt: torch.Tensor
+        Shape (H, W, 3)
+        Range [0,1]
+    Returns:
+        SSIM scalar
+    """
+    # HWC -> NCHW
+    pred = pred.permute(2, 0, 1).unsqueeze(0)
+    gt   = gt.permute(2, 0, 1).unsqueeze(0)
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    # Gaussian window
+    coords = torch.arange(window_size, device=pred.device) - window_size // 2
+    g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    g = (g / g.sum()).view(1, 1, -1)
+
+    window = g.transpose(2, 1) @ g
+    window = window.expand(3, 1, window_size, window_size)
+
+    mu1 = F.conv2d(pred, window, padding=window_size // 2, groups=3)
+    mu2 = F.conv2d(gt,   window, padding=window_size // 2, groups=3)
+
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv2d(pred * pred, window, padding=window_size // 2, groups=3) - mu1_sq
+    sigma2_sq = F.conv2d(gt * gt,     window, padding=window_size // 2, groups=3) - mu2_sq
+    sigma12   = F.conv2d(pred * gt,   window, padding=window_size // 2, groups=3) - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2) + eps
+    )
+
+    return ssim_map.mean()
 
 # =========================
 # Image loading

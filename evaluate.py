@@ -3,16 +3,15 @@ import time
 from typing import List, Any, Tuple
 
 import cv2
+import lpips
 import numpy
 import torch
+import torch.nn.functional as F
 from tqdm import tqdm
 
 import learnablePerlin3D
 import utils
 from learnablePerlin3D import PerlinNoise3D
-from matplotlib import pyplot as plt
-
-import lpips
 
 # Initialize once
 lpips_fn = lpips.LPIPS(net='alex').to("cuda")
@@ -40,16 +39,57 @@ def psnr_torch(pred, gt, eps=1e-8):
     psnr = 10.0 * torch.log10(1.0 / (mse + eps))
     return psnr
 
+def ssim_torch(pred, gt, window_size=11, sigma=1.5, eps=1e-8):
+    """
+    pred, gt: torch.Tensor
+        Shape (H, W, 3)
+        Range [0,1]
+    Returns:
+        SSIM scalar
+    """
+    # HWC -> NCHW
+    pred = pred.permute(2, 0, 1).unsqueeze(0)
+    gt   = gt.permute(2, 0, 1).unsqueeze(0)
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    # Gaussian window
+    coords = torch.arange(window_size, device=pred.device) - window_size // 2
+    g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    g = (g / g.sum()).view(1, 1, -1)
+
+    window = g.transpose(2, 1) @ g
+    window = window.expand(3, 1, window_size, window_size)
+
+    mu1 = F.conv2d(pred, window, padding=window_size // 2, groups=3)
+    mu2 = F.conv2d(gt,   window, padding=window_size // 2, groups=3)
+
+    mu1_sq = mu1 ** 2
+    mu2_sq = mu2 ** 2
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv2d(pred * pred, window, padding=window_size // 2, groups=3) - mu1_sq
+    sigma2_sq = F.conv2d(gt * gt,     window, padding=window_size // 2, groups=3) - mu2_sq
+    sigma12   = F.conv2d(pred * gt,   window, padding=window_size // 2, groups=3) - mu1_mu2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / (
+        (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2) + eps
+    )
+
+    return ssim_map.mean()
+
 def eval(
         perlins: List[PerlinNoise3D] = None,
         cameras: List[utils.Camera] = None,
         dSteps: int = None,
         ifVisualize: bool = False,
         extremeSpeed: bool = False,
-        device: str = "cuda") -> Tuple[List[Any], List[Any]]:
+        device: str = "cuda") -> Tuple[List[Any], List[Any], List[Any]]:
 
     totalLoss_psnr = []
     totalLoss_lpips = []
+    totalLoss_ssim = []
 
     center_ = perlins[0].center
     scale_ = perlins[0].scale
@@ -103,6 +143,7 @@ def eval(
 
             totalLoss_psnr.append(psnr_torch(pred_img, gtImage).item())
             totalLoss_lpips.append(lpips_torch(pred_img, gtImage))
+            totalLoss_ssim.append(ssim_torch(pred_img, gtImage).item())
 
             if ifVisualize:
                 # pred_img[~mask_img] = ? #Background
@@ -113,10 +154,10 @@ def eval(
                 cv2.imshow("GT", showGt)
                 cv2.waitKey(1)
 
-    return totalLoss_psnr, totalLoss_lpips
+    return totalLoss_psnr, totalLoss_lpips, totalLoss_ssim
 
 if __name__ == "__main__":
-    datasets = ["room"]
+    datasets = ["plant","garden"]
     res = [64, 16, 4]
 
     for dataset in datasets:
@@ -140,7 +181,7 @@ if __name__ == "__main__":
         nyquistFreq = res[0] * 2
 
         start = time.time()
-        loss_psnr, loss_lpips = eval([perlin1,perlin2,perlin3], cams, nyquistFreq, True, False, "cuda")
+        loss_psnr, loss_lpips, loss_ssim = eval([perlin1,perlin2,perlin3], cams, nyquistFreq, False, False, "cuda")
         totalTime = time.time() - start
 
         print(f"fps:{len(cams)/totalTime}")
@@ -149,7 +190,10 @@ if __name__ == "__main__":
         ## END OF TRAINING
         loss_psnr_arr = numpy.array(loss_psnr)
         loss_lpips_arr = numpy.array(loss_lpips)
+        loss_ssim_arr = numpy.array(loss_ssim)
         print(f"mean_psnr:{loss_psnr_arr.mean()}")
         print(f"mean_lpips:{loss_lpips_arr.mean()}")
+        print(f"mean_ssim:{loss_ssim_arr.mean()}")
         numpy.savetxt(f"{outputFolder}/loss_psnr.txt", loss_psnr_arr)
         numpy.savetxt(f"{outputFolder}/loss_lpips.txt", loss_lpips_arr)
+        numpy.savetxt(f"{outputFolder}/loss_ssim.txt", loss_ssim_arr)

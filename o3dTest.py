@@ -2,8 +2,8 @@ import learnablePerlin3D
 import utils
 from plViewer import PerlinViewer
 
-dataset = "room"
-trainingSetup = "scale=4.25_res=64+16+4_dSteps=128_decay_bg=0.5_mae.8+ssim.2"
+dataset = "vintage"
+trainingSetup = "TEST_scale=6_res=64+16+4_dSteps=128_decay_bg=0.5_mae.8+ssim.2"
 perlinFolder = f"{dataset}/trained/{trainingSetup}"
 
 cams = utils.readColmapSceneInfo(dataset)
