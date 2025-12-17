@@ -56,7 +56,7 @@ def train(
         loss_epoch = []
         for cam in cameras:
             p_close = 0.
-            p_far = optimalZ*2
+            p_far = optimalZ * 2
             requestPoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
             renderedPoints_Volume = perlin.getValue(requestPoints_Volume, optimizer) / 2. + 0.5
 
@@ -102,7 +102,7 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    datasets = ["treehill"]
+    datasets = ["counter"]
     targetRes = [9]
 
     for res in targetRes:
