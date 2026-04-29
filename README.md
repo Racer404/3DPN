@@ -36,6 +36,10 @@ The representation is:
 ---
 
 ## Installation
+This project has been tested with the following environment:
+
+Python: 3.8.20
+CUDA: 11.8
 
 ```bash
 git clone https://github.com/Racer404/3DPN.git
@@ -48,13 +52,34 @@ pip install -r requirements.txt
 
 ## Usage
 
-### Train
+### 1. Download Dataset
+
+Download the dataset from the official source (see Resources section below).
+
+### 2. Prepare Dataset
+
+Extract the dataset into the `data/` directory following this structure:
+
+```
+data/
+└── ├── kitchen/
+          └── ├── images/
+              ├── sparse/
+    ├── garden/
+    ├── bicycle/
+    └── ...
+```
+
+Run the **downsampler.py** (You need to modify the target folder in the code, if you wish to change the **scaling factor**, you also have to modify the **colmap_loader.py** before training)
+
+
+### 3. Train
 
 ```bash
 python train.py
 ```
 
-### Render
+### 4. Render
 
 ```bash
 python viewer.py
