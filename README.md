@@ -68,6 +68,8 @@ data/
     ├── garden/
     ├── bicycle/
     └── ...
+train.py
+viewer.py
 ```
 
 Run the **downsampler.py** (You need to modify the target folder in the code, if you wish to change the **scaling factor**, you also have to modify the **colmap_loader.py** before training)
