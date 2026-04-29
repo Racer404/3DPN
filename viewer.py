@@ -1,6 +1,6 @@
 import learnablePerlin3D
 import utils
-from plViewer import PerlinViewer
+from o3dRenderer import PerlinViewer
 
 dataset = "kitchen"
 trainingSetup = "scale=4.25_res=64+16+4_dSteps=128_decay_bg=0.5_mae.8+ssim.2"
