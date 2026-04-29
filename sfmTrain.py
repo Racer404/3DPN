@@ -25,7 +25,6 @@ def train(
         resultFolder: str = "results",
         device: str = "cuda") -> List[Any]:
 
-    ref_cams = cameras[:]
     os.makedirs(resultFolder, exist_ok=True)
 
     for p in perlins:

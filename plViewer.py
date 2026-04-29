@@ -20,7 +20,7 @@ class PerlinViewer:
 
         self.app = gui.Application.instance
         self.app.initialize()
-        self.window = self.app.create_window("Custom Camera Renderer", self.cam.width * 3, self.cam.height)
+        self.window = self.app.create_window("Realtime Perlin Renderer", self.cam.width * 3, self.cam.height)
 
         self.scene_box = gui.SceneWidget()
         self.scene_perlin = gui.ImageWidget()
@@ -111,9 +111,9 @@ class PerlinViewer:
         o3d_img_perlin = o3d.t.geometry.Image(img_perlin)
         self.scene_perlin.update_image(o3d_img_perlin)
 
-        # img_pointCloud = self.render_pointCloud()
-        # o3d_img_pointCloud = o3d.t.geometry.Image(img_pointCloud)
-        # self.scene_pointcloud.update_image(o3d_img_pointCloud)
+        img_pointCloud = self.render_pointCloud()
+        o3d_img_pointCloud = o3d.t.geometry.Image(img_pointCloud)
+        self.scene_pointcloud.update_image(o3d_img_pointCloud)
 
         # time.sleep(1 / 30.0) # Schedule next frame (~30 FPS)
         self.app.post_to_main_thread(self.window, self.on_loop)
