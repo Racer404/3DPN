@@ -4,10 +4,10 @@ from o3dRenderer import PerlinViewer
 
 dataset = "kitchen"
 trainingSetup = "scale=4.25_res=64+16+4_dSteps=128_decay_bg=0.5_mae.8+ssim.2"
-perlinFolder = f"{dataset}/trained/{trainingSetup}"
+perlinFolder = f"data/{dataset}/trained/{trainingSetup}"
 
-cams = utils.readColmapSceneInfo(dataset)
-points = utils.readColmapPoints(dataset)
+cams = utils.readColmapSceneInfo(f"data/{dataset}")
+points = utils.readColmapPoints(f"data/{dataset}")
 viewerCam = cams[0]
 
 p64 = learnablePerlin3D.readTensor(f"{perlinFolder}/weights/0.pth")

@@ -114,13 +114,13 @@ if __name__ == "__main__":
 
     for res in targetRes:
         for dataset in datasets:
-            cams = utils.readColmapSceneInfo(dataset)
+            cams = utils.readColmapSceneInfo(f"data/{dataset}")
             optimalZ = utils.getDOIfromCams(cams)
             sceneCenter, centerStd = utils.getPOIfromCamsZ(cams, optimalZ)
             scale_multiplier = 4.25
             print(f"scene centerStd:{centerStd}")
             trainingSetup = f"scale={scale_multiplier}_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
-            outputFolder = f"{dataset}/trained/{trainingSetup}"
+            outputFolder = f"data/{dataset}/trained/{trainingSetup}"
             perlin1 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[0], center=sceneCenter, channelNum=4, device="cuda")
             perlin2 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[1], center=sceneCenter, channelNum=4, device="cuda")
             perlin3 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[2], center=sceneCenter, channelNum=4, device="cuda")
