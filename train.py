@@ -68,7 +68,7 @@ def train(
             rendered_perPerlin = torch.stack([p.getValue(requestPoints_Volume[mask_Volume]) for p in perlins]) / 2. + 0.5 #Direct Scale
             rendered_perPerlin_color = rendered_perPerlin[:,:,:-1]
             rendered_perPerlin_alpha = rendered_perPerlin[:,:,-1:]
-            renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsRaypass(rendered_perPerlin_color, rendered_perPerlin_alpha, mask_Volume, dSteps)
+            renderedPoints_Flat, mask_Flat = utils.renderVolume_stepsDecay(rendered_perPerlin_color, rendered_perPerlin_alpha, mask_Volume, dSteps)
 
             pred_img = renderedPoints_Flat.reshape(cam.width, cam.height, colorChannels_)
             mask_img = mask_Flat.reshape(cam.width, cam.height)
@@ -109,7 +109,7 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    datasets = ["room"]
+    datasets = ["kitchen"]
     targetRes = [[64,16,4]]
 
     for res in targetRes:
@@ -119,13 +119,13 @@ if __name__ == "__main__":
             sceneCenter, centerStd = utils.getPOIfromCamsZ(cams, optimalZ)
             scale_multiplier = 4.25
             print(f"scene centerStd:{centerStd}")
-            trainingSetup = f"scale={scale_multiplier}_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_rayPass_bg=0.5_mae.8+ssim.2"
+            trainingSetup = f"scale={scale_multiplier}_res={res[0]}+{res[1]}+{res[2]}_dSteps={2 * res[0]}_decay_bg=0.5_mae.8+ssim.2"
             outputFolder = f"{dataset}/trained/{trainingSetup}"
             perlin1 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[0], center=sceneCenter, channelNum=4, device="cuda")
             perlin2 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[1], center=sceneCenter, channelNum=4, device="cuda")
             perlin3 = PerlinNoise3D(scale=centerStd * scale_multiplier, res=res[2], center=sceneCenter, channelNum=4, device="cuda")
 
-            loss = train([perlin1, perlin2, perlin3], cams, 20_000, 0.01, 2 * res[0], False, True, outputFolder)
+            loss = train([perlin1, perlin2, perlin3], cams, 20_000, 0.01, 2 * res[0], True, True, outputFolder)
 
             torch.cuda.synchronize()
             ## END OF TRAINING

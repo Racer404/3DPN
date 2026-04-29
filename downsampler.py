@@ -28,7 +28,7 @@ def resize_images(input_folder = "", target_width=400, output_folder="resized"):
     print("Done!")
 
 if __name__ == "__main__":
-    dataset = "vintage"
+    dataset = "kitchen"
     inputFolder = f"{dataset}/images"
     outputFolder = f"{dataset}/images_400"
     resize_images(input_folder = inputFolder, output_folder=outputFolder)
