@@ -1,4 +1,4 @@
-# 3DPN: Learnable 3D Perlin Noise for Image-Domain 3D Reconstruction
+# 3DPN: Learnable 3D Perlin Noise
 
 This repository contains an implementation of **3DPN**, a learnable 3D scene representation based on Perlin Noise for image-domain 3D reconstruction.
 
