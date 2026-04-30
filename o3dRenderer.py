@@ -4,10 +4,7 @@ import open3d as o3d
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 import torch
-from matplotlib import pyplot as plt
-from typing import List
 
-import learnablePerlin3D
 import utils
 from learnablePerlin3D import PerlinNoise3D
 

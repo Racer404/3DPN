@@ -56,7 +56,7 @@ def train(
         loss_epoch = []
         for cam in cameras:
             p_close = 0.
-            p_far = optimalZ*2
+            p_far = optimalZ * 2
             requestPoints_Volume = cam.sampleVolumeBySteps(p_close, p_far, dSteps)[0]
             renderedPoints_Volume = perlin.getValue(requestPoints_Volume, optimizer) / 2. + 0.5
 
@@ -102,21 +102,21 @@ def train(
     return totalLoss
 
 if __name__ == "__main__":
-    datasets = ["kitchen","bicycle","garden","counter","room"]
-    targetRes = [7,9]
+    datasets = ["room"]
+    targetRes = [7]
 
     for res in targetRes:
         for dataset in datasets:
-            cams = utils.readColmapSceneInfo(dataset)
+            cams = utils.readColmapSceneInfo(f"data/{dataset}")
             optimalZ = utils.getDOIfromCams(cams)
             sceneCenter, centerVar = utils.getPOIfromCamsZ(cams, optimalZ)
             nyquist_freq = math.ceil(2 * (res * optimalZ * 2))
 
             trainingSetup = f"INF_res={res}_dStep={nyquist_freq}_raypass_mae.8+ssim.2"
-            outputFolder = f"{dataset}/trained/{trainingSetup}"
+            outputFolder = f"data/{dataset}/trained/{trainingSetup}"
 
             perlin = PerlinNoise3D(res=res, center=sceneCenter, channelNum=3+1, device="cuda")
-            loss = train(perlin, cams, 20_000, 0.01, optimalZ, nyquist_freq, False, True, outputFolder)
+            loss = train(perlin, cams, 20_000, 0.01, optimalZ, nyquist_freq, True, True, outputFolder)
             torch.cuda.synchronize()
             ## END OF TRAINING
 
