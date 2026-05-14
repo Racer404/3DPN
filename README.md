@@ -81,6 +81,7 @@ Run the **downsampler.py** (You need to modify the target folder in the code, if
 ```bash
 python train.py
 ```
+![training](/assets/images/training.gif)
 
 ### 4. Render
 
