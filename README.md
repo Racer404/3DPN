@@ -1,5 +1,5 @@
 # 3DPN: Learnable 3D Perlin Noise
-This branch is built for the **bounded** setup, if you want to test the **unbounded** setup, please switch branch.
+This branch is built for the **unbounded** setup, if you want to test the **bounded** setup, please switch branch.
 
 This repository contains an implementation of **3DPN**, a learnable 3D scene representation based on Perlin Noise for image-domain 3D reconstruction.
 
@@ -110,7 +110,7 @@ isbn={978-989-758-804-4},
 issn={2184-4321},
 }
 ```
-![qualitative_bounded](/assets/qualitative_bounded.png)
+![qualitative_unbounded](/assets/qualitative_unbounded.png)
 ---
 
 ## 📜 License
