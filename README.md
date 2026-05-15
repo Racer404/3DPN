@@ -1,5 +1,5 @@
 # 3DPN: Learnable 3D Perlin Noise
-This branch is built for the **unbounded** setup, if you want to test the **bounded** setup, please switch branch.
+This branch is built for the **bounded** setup, if you want to test the **unbounded** setup, please switch branch.
 
 This repository contains an implementation of **3DPN**, a learnable 3D scene representation based on Perlin Noise for image-domain 3D reconstruction.
 
@@ -7,8 +7,12 @@ This repository contains an implementation of **3DPN**, a learnable 3D scene rep
 > VISAPP 2026, Marbella, Spain
 > 
 > We propose 3DPN, a learnable 3D scene representation based on Perlin Noise for image-domain 3D reconstruction. 3DPN models scenes as a spatially continuous volumetric field defined by optimizable gradient vectors on a regular lattice, and rendered via differentiable volumetric rendering. We introduce a complete optimization pipeline, including automatic scene initialization from camera poses, a monotonic and gapless indexing scheme to support both bounded and unbounded scene configurations. To improve reconstruction capacity while maintaining a compact parameterization, we adopt a mixed-resolution formulation that combines multiple noise frequencies within a single volume. Owing to its analytic structure and low parameter size, 3DPN enables efficient rendering with decent frame rates. Experiments on public benchmarks and real-world captures show that 3DPN is particularly effective for compact scenes dominated by a single object, while the unbounded configuration is better suited for larger-scale scenes with extended spatial structure.
-
 ---
+
+<p align="center">
+  <img src="assets/define3Dpn.png" width="40%" />
+  <img src="assets/interpolation.png" width="25%" /> 
+</p>
 
 ## Overview
 
@@ -21,10 +25,11 @@ The representation is:
 - Compact
 - Interpretable
 
----
+<p align="center">
+  <img src="assets/3dperlin.png" width="80%" />
+</p>
 
 ## Key Features
-
 - **Learnable Perlin Noise Representation**
   - Scene encoded via gradient vectors on a 3D lattice
 - **Differentiable Rendering**
@@ -33,7 +38,6 @@ The representation is:
   - Multi-scale noise improves detail and stability
 - **Flexible Scene Modeling**
   - Supports bounded and unbounded scenes
-
 ---
 
 ## Installation
@@ -54,11 +58,11 @@ pip install -r requirements.txt
 ## Usage
 
 ### 1. Download Dataset
+![sit_11f](/assets/phoneCapture_half.png)
 
 Download the dataset from the official source (see Resources section below).
 
 ### 2. Prepare Dataset
-
 Extract the dataset into the `data/` directory following this structure:
 
 ```
@@ -81,13 +85,14 @@ Run the **downsampler.py** (You need to modify the target folder in the code, if
 ```bash
 python train.py
 ```
+![training](/assets/training.gif)
 
 ### 4. Render
 
 ```bash
 python viewer.py
 ```
-
+![rendering](/assets/rendering.gif)
 ---
 
 ## 📖 Citation
@@ -105,7 +110,7 @@ isbn={978-989-758-804-4},
 issn={2184-4321},
 }
 ```
-
+![qualitative_bounded](/assets/qualitative_bounded.png)
 ---
 
 ## 📜 License
